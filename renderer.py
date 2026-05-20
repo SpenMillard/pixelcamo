@@ -450,6 +450,289 @@ def _apply_texture(
 
 
 # ---------------------------------------------------------------------------
+# Aerial mode
+# ---------------------------------------------------------------------------
+
+def _lighten_or_darken(
+    rgb: tuple[int, int, int], delta: float
+) -> tuple[int, int, int]:
+    """Shift all three RGB channels by delta (−255…+255), clamped to 0–255."""
+    return (
+        max(0, min(255, round(rgb[0] + delta))),
+        max(0, min(255, round(rgb[1] + delta))),
+        max(0, min(255, round(rgb[2] + delta))),
+    )
+
+
+TILE_TYPE_MAP = {
+    'welsh slate':           'slate',
+    'clay plain tile':       'plain',
+    'clay pantile':          'pantile',
+    'concrete interlocking': 'concrete',
+    'fibre cement slate':    'fibre_cement',
+}
+
+
+def _palette_name_to_tile_type(palette_name: str) -> str:
+    return TILE_TYPE_MAP.get(palette_name.lower().strip(), 'plain')
+
+
+COLOUR_VARIATION = {
+    'slate':        0.60,
+    'plain':        1.00,
+    'pantile':      0.60,
+    'concrete':     0.30,
+    'fibre_cement': 0.20,
+}
+
+
+def _tile_colour_variation(tile_type: str) -> float:
+    return COLOUR_VARIATION.get(tile_type, 0.5)
+
+
+# Tile geometry (mm dimensions, scaled by tile_scale / 14.0)
+# tw = (min_mm, max_mm), th = (min_mm, max_mm)
+_TILE_GEOM: dict[str, dict] = {
+    'slate':        {'tw': (300, 500), 'th': (200, 300), 'lap': 87,  'margin': 6,  'bond': 'broken',   'profile': 'flat'},
+    'plain':        {'tw': (165, 165), 'th': (265, 265), 'lap': 65,  'margin': 3,  'bond': 'broken',   'profile': 'flat'},
+    'pantile':      {'tw': (335, 335), 'th': (390, 390), 'lap': 75,  'margin': 25, 'bond': 'straight', 'profile': 'barrel'},
+    'concrete':     {'tw': (420, 420), 'th': (330, 330), 'lap': 75,  'margin': 30, 'bond': 'broken',   'profile': 'rib'},
+    'fibre_cement': {'tw': (600, 600), 'th': (300, 300), 'lap': 90,  'margin': 3,  'bond': 'broken',   'profile': 'flat'},
+}
+
+
+def _render_tiles(
+    width: int, height: int,
+    palette: list[str],
+    tile_scale: int,
+    density: int,
+    passes: int,
+    seed: int,
+    tile_type: str,
+    colour_variation: float,
+) -> Image.Image:
+    """Render a pitched-roof tile repeat pattern."""
+    sf = max(0.1, tile_scale / 14.0)
+    rand = mulberry32(seed)
+    geom = _TILE_GEOM.get(tile_type, _TILE_GEOM['plain'])
+
+    # Pixel dimensions
+    tw_min = max(4, round(geom['tw'][0] * sf))
+    tw_max = max(tw_min, round(geom['tw'][1] * sf))
+    th_px  = max(4, round(((geom['th'][0] + geom['th'][1]) / 2) * sf))
+    lap_px = max(1, round(geom['lap'] * sf))
+    mrg_px = max(1, round(geom['margin'] * sf))
+
+    visible_h = max(2, th_px - lap_px)   # exposed tile strip height
+    bond      = geom['bond']
+    profile   = geom['profile']
+    var_range = colour_variation * 40     # ±brightness units
+
+    rgb_pal    = [_hex_to_rgb(c) for c in palette]
+    col_light  = rgb_pal[0] if len(rgb_pal) > 0 else (160, 160, 160)
+    col_mid    = rgb_pal[1] if len(rgb_pal) > 1 else col_light
+    col_joint  = rgb_pal[3] if len(rgb_pal) > 3 else (rgb_pal[-1] if rgb_pal else (60, 55, 50))
+
+    img  = Image.new('RGB', (width, height), col_mid)
+    draw = ImageDraw.Draw(img)
+    num_rows = math.ceil(height / max(1, visible_h)) + 2
+
+    for row in range(num_rows):
+        y_top    = row * visible_h
+        y_vis_bt = y_top + visible_h
+        x_offset = (row % 2) * (tw_min // 2) if bond == 'broken' else 0
+        num_cols = math.ceil(width / max(1, tw_min - mrg_px)) + 3
+
+        for col in range(num_cols):
+            tw = tw_min + int(rand() * (tw_max - tw_min)) if tw_min != tw_max else tw_min
+            x_l = col * (tw - mrg_px) - x_offset
+            x_r = x_l + tw - mrg_px - 1
+            if x_l >= width or x_r < 0:
+                continue
+            x_r = min(width - 1, x_r)
+            if x_r < x_l:
+                continue
+
+            base_c = col_mid if rand() > 0.35 else col_light
+            delta  = (rand() - 0.5) * 2 * var_range
+            tile_c = _lighten_or_darken(base_c, delta)
+
+            if profile == 'barrel':
+                top_h = max(1, round(visible_h * 0.30))
+                mid_h = max(1, round(visible_h * 0.40))
+                bot_h = max(1, visible_h - top_h - mid_h)
+                draw.rectangle([x_l, y_top,            x_r, y_top + top_h - 1],          fill=_lighten_or_darken(tile_c, +12))
+                draw.rectangle([x_l, y_top + top_h,    x_r, y_top + top_h + mid_h - 1],  fill=tile_c)
+                draw.rectangle([x_l, y_top + top_h + mid_h, x_r, y_vis_bt - 1],          fill=_lighten_or_darken(tile_c, -10))
+                # Inter-tile trough at right edge
+                tx = x_r + 1
+                if mrg_px > 1 and tx < width:
+                    draw.rectangle([tx, y_top, min(width - 1, tx + mrg_px - 1), y_vis_bt - 1],
+                                   fill=_lighten_or_darken(col_joint, -20))
+            elif profile == 'rib':
+                draw.rectangle([x_l, y_top, x_r, y_vis_bt - 1], fill=tile_c)
+                rib_x = x_l + max(1, mrg_px // 2)
+                if rib_x <= x_r:
+                    draw.line([(rib_x, y_top), (rib_x, y_vis_bt - 1)],
+                              fill=_lighten_or_darken(tile_c, 15),
+                              width=max(1, mrg_px // 3))
+            else:
+                draw.rectangle([x_l, y_top, x_r, y_vis_bt - 1], fill=tile_c)
+
+        # Horizontal joint line at row boundary
+        jy = y_vis_bt
+        if 0 <= jy < height:
+            draw.line([(0, jy), (width, jy)], fill=col_joint, width=max(1, round(sf * 0.8)))
+
+        # Vertical joint lines — all profiles except pantile (passes ≥ 2)
+        if profile != 'barrel' and passes >= 2:
+            jw_v = max(1, round(sf * 0.5))
+            for col in range(math.ceil(width / max(1, tw_min - mrg_px)) + 3):
+                vx = col * (tw_min - mrg_px) - x_offset
+                if 0 <= vx < width:
+                    draw.line([(vx, y_top), (vx, y_vis_bt)], fill=col_joint, width=jw_v)
+
+    return img
+
+
+def _render_flat_roof(
+    width: int, height: int,
+    palette: list[str],
+    zone_scale: int,
+    density: int,
+    passes: int,
+    seed: int,
+    zone_count: int,
+    palette_name: str = '',
+) -> Image.Image:
+    """Render a flat-roof zone-based pattern."""
+    pname = rand_flat = palette_name.lower()
+    rand  = mulberry32(seed ^ 0xF0F0F0F0)
+    sf    = zone_scale / 14.0
+
+    # GRP: suppress zones — near-uniform surface
+    if 'grp' in pname:
+        eff_scale   = max(zone_scale, 120)
+        zone_density = max(0, min(100, round((zone_count - 3) * 20)))
+        img = _render_camo(width, height, palette, eff_scale, zone_density, 1, seed, False)
+    else:
+        zone_density = max(0, min(100, round((zone_count - 3) * 25)))
+        img = _render_camo(width, height, palette, max(40, zone_scale), zone_density, 1, seed, False)
+
+    draw    = ImageDraw.Draw(img)
+    rgb_pal = [_hex_to_rgb(c) for c in palette]
+    shadow_c = rgb_pal[3] if len(rgb_pal) > 3 else rgb_pal[-1]
+    light_c  = rgb_pal[1] if len(rgb_pal) > 1 else rgb_pal[0]
+
+    if 'bitumen' in pname:
+        # Horizontal lap joint lines (600–900mm equivalent spacing)
+        spacing = max(20, round(650 * sf * 0.04))
+        y = spacing + int(rand() * spacing * 0.3)
+        while y < height:
+            draw.line([(0, y), (width, y)], fill=shadow_c, width=max(2, round(sf * 0.08)))
+            y += max(10, int(spacing * (0.85 + rand() * 0.30)))
+
+    elif 'epdm' in pname:
+        # 2–3 sparse, near-invisible seam lines
+        n_seams = 2 + int(rand() * 2)
+        seam_c  = _lighten_or_darken(light_c, 12)
+        for _ in range(n_seams):
+            if rand() < 0.5:
+                draw.line([(int(rand() * width), 0), (int(rand() * width), height)], fill=seam_c, width=2)
+            else:
+                draw.line([(0, int(rand() * height)), (width, int(rand() * height))], fill=seam_c, width=2)
+
+    elif 'grp' in pname:
+        # Faint vertical banding from fibreglass lay direction
+        band_sp = max(30, round(180 * sf * 0.04))
+        band_c  = _lighten_or_darken(light_c, 8)
+        x = band_sp
+        while x < width:
+            draw.line([(x, 0), (x, height)], fill=band_c, width=1)
+            x += band_sp
+
+    return img
+
+
+def _apply_shadow_layer(
+    base: Image.Image,
+    palette: list[str],
+    sun_angle_deg: float,
+    sun_elevation_deg: float,
+    shadow_depth: float,
+    seed: int,
+    roof_type: str,
+) -> Image.Image:
+    """Apply trompe-l'œil parapet / ridge / equipment shadow layer."""
+    if shadow_depth <= 0:
+        return base
+
+    width, height = base.size
+
+    shadow_dir = (sun_angle_deg + 180) % 360
+    elev       = max(5.0, min(85.0, sun_elevation_deg))
+    shadow_lf  = 1.0 / math.tan(math.radians(elev))   # shadow length factor
+
+    # Shadow direction components (compass bearing → image coords)
+    sd_rad  = math.radians(shadow_dir)
+    s_east  = math.sin(sd_rad)    # +ve → east / right
+    s_south = -math.cos(sd_rad)   # +ve → south / down (SVG coords)
+
+    rgb_pal     = [_hex_to_rgb(c) for c in palette]
+    shadow_rgb  = rgb_pal[0] if rgb_pal else (30, 28, 20)
+    alpha       = int(shadow_depth * 220)
+
+    overlay = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+    draw    = ImageDraw.Draw(overlay)
+    fill    = (*shadow_rgb, alpha)
+
+    # Parapet strip width: 2% of canvas ≈ 300mm on a 5m canvas × shadow_lf
+    parapet_px    = max(6, round(width * 0.02))
+    shadow_strip  = max(4, min(round(width * 0.15), round(parapet_px * shadow_lf)))
+
+    if roof_type == 'pitched':
+        # Ridge shadow band at top ~6% of canvas
+        ridge_h = max(4, round(height * 0.06))
+        draw.rectangle([0, 0, width, ridge_h], fill=(*shadow_rgb, int(alpha * 0.5)))
+
+    else:  # flat
+        if s_south < -0.2:  draw.rectangle([0, 0, width, shadow_strip], fill=fill)               # north/top
+        if s_south > 0.2:   draw.rectangle([0, height - shadow_strip, width, height], fill=fill)  # south/bottom
+        if s_east  < -0.2:  draw.rectangle([0, 0, shadow_strip, height], fill=fill)               # west/left
+        if s_east  > 0.2:   draw.rectangle([width - shadow_strip, 0, width, height], fill=fill)   # east/right
+
+        # Equipment shadows (HVAC units, plant boxes)
+        rand_eq  = mulberry32(seed ^ 0x7F3A9C12)
+        n_eq     = 3 + int(rand_eq() * 5)
+        c_scale  = width / 2953.0   # normalise to reference 5 m canvas
+        for _ in range(n_eq):
+            bw = max(8,  round((15 + rand_eq() * 35) * c_scale))
+            bh = max(6,  round((10 + rand_eq() * 25) * c_scale))
+            bx = int(rand_eq() * max(1, width  - bw - shadow_strip * 2)) + shadow_strip
+            by = int(rand_eq() * max(1, height - bh - shadow_strip * 2)) + shadow_strip
+            # Shadow (drawn first — behind body)
+            ddx = round(s_east  * bh * shadow_lf * 0.6)
+            ddy = round(s_south * bh * shadow_lf * 0.6)
+            draw.rectangle([bx + ddx, by + ddy, bx + ddx + bw, by + ddy + bh],
+                           fill=(*shadow_rgb, int(alpha * 0.75)))
+            # Equipment body (lighter)
+            draw.rectangle([bx, by, bx + bw, by + bh],
+                           fill=(*_lighten_or_darken(shadow_rgb, 50), int(alpha * 0.40)))
+
+    # Composite via Multiply blend
+    base_rgba = base.convert('RGBA')
+    try:
+        import blend_modes as bm
+        base_arr = np.array(base_rgba,  dtype=np.float32)
+        over_arr = np.array(overlay,    dtype=np.float32)
+        result   = Image.fromarray(bm.multiply(base_arr, over_arr, 1.0).astype(np.uint8), 'RGBA')
+    except Exception:
+        result = Image.alpha_composite(base_rgba, overlay)
+
+    return result.convert('RGB')
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -507,6 +790,56 @@ def render_pattern(doc: dict, opts: dict) -> Image.Image:
             ).convert('RGB')
         except Exception:
             img = Image.blend(layer_a, layer_b, opacity_frac)
+    elif mode == 'aerial':
+        aerial_cfg = doc.get('aerial', {})
+        roof_type    = aerial_cfg.get('roofType', 'flat')
+        sun_angle    = float(aerial_cfg.get('sunAngle', 225))
+        sun_elev     = float(aerial_cfg.get('sunElevation', 35))
+        shadow_depth = float(aerial_cfg.get('shadowDepth', 0.6))
+        weathering   = float(aerial_cfg.get('weathering', 0.4))
+        zone_count   = int(aerial_cfg.get('zoneCount', 3))
+        palette_name = doc.get('paletteName', '')
+        tile_type    = _palette_name_to_tile_type(palette_name)
+
+        if roof_type == 'pitched':
+            img = _render_tiles(
+                width, height, palette, pixel_scale, density, passes, seed,
+                tile_type=tile_type,
+                colour_variation=_tile_colour_variation(tile_type),
+            )
+        else:
+            img = _render_flat_roof(
+                width, height, palette, pixel_scale, density, passes, seed,
+                zone_count=zone_count,
+                palette_name=palette_name,
+            )
+
+        img = _apply_shadow_layer(
+            img, palette, sun_angle, sun_elev, shadow_depth, seed, roof_type
+        )
+
+        if passes >= 2 and weathering > 0:
+            stain_col = palette[3] if len(palette) > 3 else palette[-1]
+            streak_tex = {
+                'type': 'streak',
+                'opacity': int(weathering * 60),
+                'density': int(weathering * 80),
+                'length': max(20, round(width * 0.08)),
+                'direction': 180.0,
+                'waviness': 0.4,
+                'weight': max(1, round(pixel_scale * 0.04)),
+                'color': stain_col,
+                'blend': 'multiply',
+            }
+            img = _apply_texture(img, streak_tex, seed ^ 0x5C3A1F00)
+
+        # Apply texture overlay (standard, e.g. noise/grain) if set
+        tex = doc.get('texture', {})
+        if tex.get('type', 'none') != 'none':
+            img = _apply_texture(img, tex, seed)
+
+        return img
+
     else:
         img = _render_camo(width, height, palette, pixel_scale, density, passes, seed, tile)
 

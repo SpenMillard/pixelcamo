@@ -2,14 +2,15 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { CanvasPane } from './components/CanvasPane';
 import { Statusline } from './components/Statusline';
-import { generateCamo, camoToRects, generateDazzle } from './lib/camo';
+import { generateCamo, camoToRects, generateDazzle, generateAerial } from './lib/camo';
 import { getApi } from './lib/api';
 import {
   PALETTES, PRESETS_DATA, DEFAULT_TEXTURE, SIZE_PRESETS,
+  FLAT_AERIAL_PALETTES, AERIAL_SIZE_PRESET_NAMES, STANDARD_SIZE_PRESET_NAMES,
 } from './data/constants';
 import type {
   Mode, TextureType, BlendType, HarmonyType, TextureParams,
-  SectionOpen, Passes, ExportFormat, PcmDocument,
+  SectionOpen, Passes, ExportFormat, PcmDocument, RoofType,
 } from './types';
 
 // Re-export for convenience
@@ -39,6 +40,14 @@ export default function App({ isDevWrapper }: AppProps) {
   const [blendBPixelScale, setBlendBPixelScale] = useState(7);
   const [blendBDensity, setBlendBDensity] = useState(78);
   const [blendBPasses, setBlendBPasses] = useState<Passes>(2);
+
+  // ── Aerial state ─────────────────────────────────────────────
+  const [roofType, setRoofType] = useState<RoofType>('flat');
+  const [sunAngle, setSunAngle] = useState(225);
+  const [sunElevation, setSunElevation] = useState(35);
+  const [shadowDepth, setShadowDepth] = useState(60);   // 0–100, /100 → 0.0–1.0 in doc
+  const [weathering, setWeathering] = useState(40);     // 0–100
+  const [zoneCount, setZoneCount] = useState(3);        // 1–6
 
   const [textureType, setTextureType] = useState<TextureType>('Stipple');
   const [tex, setTex] = useState<TextureParams>({ ...DEFAULT_TEXTURE });
@@ -128,9 +137,31 @@ export default function App({ isDevWrapper }: AppProps) {
     });
   }, [mode, blendBMode, canvasBox.w, canvasBox.h, palette, blendBPixelScale, blendBDensity, blendBPasses, blendBSeed]);
 
+  const aerialRects = useMemo(() => {
+    if (mode !== 'Aerial') return [];
+    return generateAerial({
+      width: canvasBox.w, height: canvasBox.h,
+      palette, pixelScale, density, passes, seed,
+      roofType, zoneCount, paletteName,
+    });
+  }, [mode, canvasBox.w, canvasBox.h, palette, pixelScale, density, passes, seed, roofType, zoneCount, paletteName]);
+
   const cols = camoResult?.cols ?? Math.ceil(canvasBox.w / pixelScale);
   const rows = camoResult?.rows ?? Math.ceil(canvasBox.h / pixelScale);
   const rectCount = mode === 'Dazzle' ? dazzleShapes.length : rects.length;
+
+  // ── Aerial: auto-set roofType + sensible scale from palette ─
+  const handleAerialPaletteChange = useCallback((name: string) => {
+    setPaletteName(name);
+    if (name !== 'Custom' && PALETTES[name]) setPalette([...PALETTES[name]]);
+    if (FLAT_AERIAL_PALETTES.has(name)) {
+      setRoofType('flat');
+      if (pixelScale < 40) setPixelScale(80);
+    } else if (name !== 'Custom') {
+      setRoofType('pitched');
+      if (pixelScale > 40) setPixelScale(14);
+    }
+  }, [pixelScale]);
 
   // ── v3: loadPreset — atomically populates all state ─────────
   const loadPreset = useCallback((name: string) => {
@@ -218,10 +249,19 @@ export default function App({ isDevWrapper }: AppProps) {
     version: 1,
     mode: mode.toLowerCase(),
     preset,
+    paletteName,
     palette,
     params: { pixel_scale: pixelScale, density, passes, seed },
     blend: { opacity: blendOpacity, type: blendType.toLowerCase() },
     blendB: { mode: blendBMode.toLowerCase(), pixelScale: blendBPixelScale, density: blendBDensity, passes: blendBPasses },
+    aerial: {
+      roofType,
+      sunAngle,
+      sunElevation,
+      shadowDepth: shadowDepth / 100,
+      weathering: weathering / 100,
+      zoneCount,
+    },
     texture: {
       type: textureType.toLowerCase(), opacity: tex.opacity, scale: tex.scale,
       density: tex.density, angle: tex.angle, spread: tex.spread, cross: tex.cross,
@@ -231,7 +271,9 @@ export default function App({ isDevWrapper }: AppProps) {
     },
     harmony: { base: harmonyBase, type: harmonyType },
     tile,
-  }), [mode, preset, palette, pixelScale, density, passes, seed, blendOpacity, blendType,
+  }), [mode, preset, paletteName, palette, pixelScale, density, passes, seed,
+      blendOpacity, blendType, blendBMode, blendBPixelScale, blendBDensity, blendBPasses,
+      roofType, sunAngle, sunElevation, shadowDepth, weathering, zoneCount,
       textureType, tex, harmonyBase, harmonyType, tile]);
 
   // ── Load doc ─────────────────────────────────────────────────
@@ -253,6 +295,13 @@ export default function App({ isDevWrapper }: AppProps) {
     setBlendBPixelScale(bb?.pixelScale ?? 7);
     setBlendBDensity(bb?.density ?? 78);
     setBlendBPasses((bb?.passes ?? 2) as Passes);
+    const ae = doc.aerial;
+    setRoofType((ae?.roofType ?? 'flat') as RoofType);
+    setSunAngle(ae?.sunAngle ?? 225);
+    setSunElevation(ae?.sunElevation ?? 35);
+    setShadowDepth(Math.round((ae?.shadowDepth ?? 0.6) * 100));
+    setWeathering(Math.round((ae?.weathering ?? 0.4) * 100));
+    setZoneCount(ae?.zoneCount ?? 3);
     const tt = cap(doc.texture.type) as TextureType;
     setTextureType(tt);
     setTex({
@@ -388,6 +437,20 @@ export default function App({ isDevWrapper }: AppProps) {
     return () => window.removeEventListener('keydown', onKey);
   }, [regenerateNewSeed, handleExport]);
 
+  // ── Aerial: switch export size defaults when entering/leaving ─
+  useEffect(() => {
+    if (mode === 'Aerial' && !AERIAL_SIZE_PRESET_NAMES.includes(exportSize)) {
+      const preset = SIZE_PRESETS['Garage Flat (5×3m)'];
+      setExportSize('Garage Flat (5×3m)');
+      setExportW(preset.w); setExportH(preset.h); setDpi(preset.dpi as 150 | 300 | 600);
+    } else if (mode !== 'Aerial' && !STANDARD_SIZE_PRESET_NAMES.includes(exportSize)) {
+      const preset = SIZE_PRESETS['1K Square'];
+      setExportSize('1K Square');
+      setExportW(preset.w); setExportH(preset.h); setDpi(preset.dpi as 150 | 300 | 600);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
+
   // ── Document title (production) ──────────────────────────────
   useEffect(() => {
     if (isDevWrapper) return;
@@ -426,6 +489,13 @@ export default function App({ isDevWrapper }: AppProps) {
           onRandomiseSeed={regenerateNewSeed}
           onSavePalette={handleSavePalette}
           onLoadPalette={handleLoadPalette}
+          roofType={roofType} setRoofType={setRoofType}
+          sunAngle={sunAngle} setSunAngle={setSunAngle}
+          sunElevation={sunElevation} setSunElevation={setSunElevation}
+          shadowDepth={shadowDepth} setShadowDepth={setShadowDepth}
+          weathering={weathering} setWeathering={setWeathering}
+          zoneCount={zoneCount} setZoneCount={setZoneCount}
+          onAerialPaletteChange={handleAerialPaletteChange}
           exportSize={exportSize} setExportSize={setExportSize}
           exportW={exportW} setExportW={setExportW}
           exportH={exportH} setExportH={setExportH}
@@ -445,6 +515,10 @@ export default function App({ isDevWrapper }: AppProps) {
           blendRects={blendRects}
           blendDazzleShapes={blendDazzleShapes}
           blendBMode={blendBMode}
+          aerialRects={aerialRects}
+          sunAngle={sunAngle}
+          sunElevation={sunElevation}
+          shadowDepth={shadowDepth}
           blendOpacity={blendOpacity}
           blendType={blendType}
           dazzleShapes={dazzleShapes}

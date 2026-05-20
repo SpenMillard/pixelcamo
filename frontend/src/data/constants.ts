@@ -1,5 +1,5 @@
 export const PALETTES: Record<string, string[]> = {
-  // Camo palettes (from PALETTES.md)
+  // ── Camo palettes ──────────────────────────────────────────────
   Woodland:  ['#4a5240', '#6b7a5e', '#3d3028', '#8a9278', '#2e3a2a'],
 
   Desert:    ['#c8a96e', '#a07840', '#786040', '#d4b888', '#5a4830'],
@@ -13,11 +13,23 @@ export const PALETTES: Record<string, string[]> = {
   Soil:      ['#4a3828', '#362818', '#5e4c38', '#241a10', '#444444'],
   Midnight:  ['#06070c', '#0d0f18', '#030408', '#14161f', '#020309'],
   Night:     ['#06070c', '#0d0f18', '#030408', '#14161f', '#020309'],
-  // Dazzle palettes
+  // ── Dazzle palettes ────────────────────────────────────────────
   'B/W':   ['#000000', '#ffffff', '#1a1a1a', '#e0e0e0'],
   'Blue':  ['#000000', '#ffffff', '#1a3a6e', '#4a8ac8'],
   'Red':   ['#000000', '#ffffff', '#8b0000', '#cc2200'],
   'Gold':  ['#000000', '#f5c400', '#1a1a1a', '#fff8d0'],
+
+  // ── UK Rooftop palettes (Aerial mode) ──────────────────────────
+  // 4 swatches: light zone · mid zone · dark/shadow · stain/algae
+  'Welsh Slate':           ['#8888a0', '#707080', '#585868', '#404048'],
+  'Clay Plain Tile':       ['#a07060', '#906858', '#7a6858', '#504038'],
+  'Clay Pantile':          ['#b08878', '#906858', '#786050', '#4a3830'],
+  'Concrete Interlocking': ['#908880', '#787068', '#605850', '#484038'],
+  'Fibre Cement Slate':    ['#909098', '#787880', '#606068', '#484850'],
+  'Flat Bitumen':          ['#2a2820', '#38342c', '#46423a', '#1e1c16'],
+  'Flat EPDM':             ['#4e4e56', '#686874', '#38383e', '#28282e'],
+  'Flat GRP':              ['#c8c4b8', '#b0ac9c', '#989488', '#787470'],
+  'Flat Aggregate':        ['#b0a898', '#908880', '#706860', '#504840'],
 };
 
 export const CAMO_PALETTE_NAMES = [
@@ -26,6 +38,17 @@ export const CAMO_PALETTE_NAMES = [
 ];
 
 export const DAZZLE_PALETTE_NAMES = ['B/W', 'Blue', 'Red', 'Gold'];
+
+export const AERIAL_PALETTE_NAMES = [
+  'Welsh Slate', 'Clay Plain Tile', 'Clay Pantile',
+  'Concrete Interlocking', 'Fibre Cement Slate',
+  'Flat Bitumen', 'Flat EPDM', 'Flat GRP', 'Flat Aggregate',
+];
+
+/** Palette names that trigger the flat-roof generator path */
+export const FLAT_AERIAL_PALETTES = new Set([
+  'Flat Bitumen', 'Flat EPDM', 'Flat GRP', 'Flat Aggregate',
+]);
 
 export type PresetSnapshot = {
   mode: 'Camo' | 'Dazzle' | 'Blend';
@@ -72,13 +95,29 @@ export const BLEND_TYPES = [
 ] as const;
 
 export const SIZE_PRESETS: Record<string, { w: number; h: number; dpi: number }> = {
-  'A4 (Portrait)': { w: 2480, h: 3508, dpi: 300 },
-  'A3 (Portrait)': { w: 3508, h: 4961, dpi: 300 },
-  '1K Square':     { w: 1024, h: 1024, dpi: 150 },
-  '2K Square':     { w: 2048, h: 2048, dpi: 300 },
-  'Tile 512':      { w: 512,  h: 512,  dpi: 72  },
-  'Custom':        { w: 1600, h: 1200, dpi: 300 },
+  // Standard
+  'A4 (Portrait)':          { w: 2480, h: 3508, dpi: 300 },
+  'A3 (Portrait)':          { w: 3508, h: 4961, dpi: 300 },
+  '1K Square':              { w: 1024, h: 1024, dpi: 150 },
+  '2K Square':              { w: 2048, h: 2048, dpi: 300 },
+  'Tile 512':               { w: 512,  h: 512,  dpi: 72  },
+  // Aerial / tarpaulin print sizes (150dpi = adequate for large-format print)
+  'Garage Flat (5×3m)':     { w: 2953, h: 1772, dpi: 150 },
+  'Extension Flat (4×4m)':  { w: 2362, h: 2362, dpi: 150 },
+  'Terrace Pitched (7×6m)': { w: 4134, h: 3543, dpi: 150 },
+  'Large Flat (10×8m)':     { w: 5906, h: 4724, dpi: 150 },
+  // Always last
+  'Custom':                 { w: 1600, h: 1200, dpi: 300 },
 };
+
+export const STANDARD_SIZE_PRESET_NAMES = [
+  'A4 (Portrait)', 'A3 (Portrait)', '1K Square', '2K Square', 'Tile 512', 'Custom',
+];
+
+export const AERIAL_SIZE_PRESET_NAMES = [
+  'Garage Flat (5×3m)', 'Extension Flat (4×4m)',
+  'Terrace Pitched (7×6m)', 'Large Flat (10×8m)', 'Custom',
+];
 
 export const DEFAULT_TEXTURE = {
   opacity: 36, scale: 3, density: 65, angle: 45, spread: 6,

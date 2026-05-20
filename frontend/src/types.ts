@@ -1,9 +1,10 @@
-export type Mode = 'Camo' | 'Dazzle' | 'Blend';
+export type Mode = 'Camo' | 'Dazzle' | 'Blend' | 'Aerial';
 export type TextureType = 'None' | 'Stipple' | 'Hatch' | 'Scratch' | 'Grain' | 'Hex' | 'Streak';
 export type BlendType = 'Normal' | 'Multiply' | 'Screen' | 'Overlay' | 'Soft-light' | 'Difference';
 export type HarmonyType = 'Complementary' | 'Analogous' | 'Triadic' | 'Split-comp' | 'Tetradic' | 'Mono';
 export type ExportFormat = 'PNG' | 'PDF';
 export type Passes = 1 | 2 | 3;
+export type RoofType = 'pitched' | 'flat';
 
 export interface TextureParams {
   opacity: number;
@@ -40,6 +41,7 @@ export interface PcmDocument {
   version: number;
   mode: string;
   preset: string;
+  paletteName?: string;
   palette: string[];
   params: {
     pixel_scale: number;
@@ -49,6 +51,14 @@ export interface PcmDocument {
   };
   blend: { opacity: number; type: string };
   blendB?: { mode: string; pixelScale: number; density: number; passes: number };
+  aerial?: {
+    roofType: string;
+    sunAngle: number;
+    sunElevation: number;
+    shadowDepth: number;
+    weathering: number;
+    zoneCount: number;
+  };
   texture: {
     type: string;
     opacity: number;

@@ -7,10 +7,11 @@ import { PixelSelect } from './PixelSelect';
 import { Icon } from '../icons';
 import {
   PRESETS_DATA, TEXTURE_TYPES, HARMONY_TYPES, BLEND_TYPES,
-  CAMO_PALETTE_NAMES, DAZZLE_PALETTE_NAMES, PALETTES, SIZE_PRESETS,
+  CAMO_PALETTE_NAMES, DAZZLE_PALETTE_NAMES, AERIAL_PALETTE_NAMES,
+  PALETTES, SIZE_PRESETS, STANDARD_SIZE_PRESET_NAMES, AERIAL_SIZE_PRESET_NAMES,
 } from '../data/constants';
 import type {
-  Mode, TextureType, BlendType, HarmonyType, TextureParams, SectionOpen, Passes, ExportFormat,
+  Mode, TextureType, BlendType, HarmonyType, TextureParams, SectionOpen, Passes, ExportFormat, RoofType,
 } from '../types';
 
 interface SidebarProps {
@@ -29,6 +30,15 @@ interface SidebarProps {
   blendBPixelScale: number; setBlendBPixelScale: (v: number) => void;
   blendBDensity: number; setBlendBDensity: (v: number) => void;
   blendBPasses: Passes; setBlendBPasses: (v: Passes) => void;
+  // Aerial
+  roofType: RoofType; setRoofType: (v: RoofType) => void;
+  sunAngle: number; setSunAngle: (v: number) => void;
+  sunElevation: number; setSunElevation: (v: number) => void;
+  shadowDepth: number; setShadowDepth: (v: number) => void;
+  weathering: number; setWeathering: (v: number) => void;
+  zoneCount: number; setZoneCount: (v: number) => void;
+  onAerialPaletteChange: (name: string) => void;
+  // Texture
   textureType: TextureType; setTextureType: (v: TextureType) => void;
   tex: TextureParams;
   setT: (k: keyof TextureParams, v: TextureParams[keyof TextureParams]) => void;
@@ -58,6 +68,9 @@ export function Sidebar(props: SidebarProps) {
     passes, setPasses, blendOpacity, setBlendOpacity, blendType, setBlendType,
     blendBMode, setBlendBMode, blendBPixelScale, setBlendBPixelScale,
     blendBDensity, setBlendBDensity, blendBPasses, setBlendBPasses,
+    roofType, setRoofType, sunAngle, setSunAngle, sunElevation, setSunElevation,
+    shadowDepth, setShadowDepth, weathering, setWeathering, zoneCount, setZoneCount,
+    onAerialPaletteChange,
     textureType, setTextureType, tex, setT,
     harmonyBase, setHarmonyBase, harmonyType, setHarmonyType,
     open, toggle, onApplyHarmony, presetModified, loadPreset, onRandomiseSeed,
@@ -68,7 +81,17 @@ export function Sidebar(props: SidebarProps) {
 
   const paletteSourceOptions = mode === 'Dazzle'
     ? [...DAZZLE_PALETTE_NAMES, 'Custom']
+    : mode === 'Aerial'
+    ? [...AERIAL_PALETTE_NAMES, 'Custom']
     : [...CAMO_PALETTE_NAMES, 'Custom'];
+
+  // Parameters section — label + range adapt to Aerial mode
+  const psLabel = mode === 'Aerial' ? (roofType === 'pitched' ? 'Tile scale' : 'Zone scale') : 'Pixel scale';
+  const [psMin, psMax] = mode === 'Aerial'
+    ? (roofType === 'flat' ? [40, 200] : [8, 40])
+    : [4, 40];
+
+  const exportSizeOptions = mode === 'Aerial' ? AERIAL_SIZE_PRESET_NAMES : STANDARD_SIZE_PRESET_NAMES;
 
   return (
     <aside className="sidebar">
@@ -81,7 +104,7 @@ export function Sidebar(props: SidebarProps) {
           <div className="row">
             <span className="label" style={{ flexBasis: 60 }}>Mode</span>
             <div className="seg" style={{ flex: 1 }}>
-              {(['Camo', 'Dazzle', 'Blend'] as Mode[]).map((m) => (
+              {(['Camo', 'Dazzle', 'Blend', 'Aerial'] as Mode[]).map((m) => (
                 <button key={m} className={mode === m ? 'active' : ''} onClick={() => setMode(m)}>{m}</button>
               ))}
             </div>
@@ -130,6 +153,42 @@ export function Sidebar(props: SidebarProps) {
             </div>
           )}
 
+          {mode === 'Aerial' && (
+            <div className="conditional reveal">
+              <div className="cond-head"><span className="name">Roof type</span></div>
+              <div className="row">
+                <span className="label" style={{ flexBasis: 60 }}>Type</span>
+                <div className="seg" style={{ flex: 1 }}>
+                  {(['pitched', 'flat'] as RoofType[]).map((t) => (
+                    <button key={t} className={roofType === t ? 'active' : ''}
+                      onClick={() => setRoofType(t)}
+                      style={{ textTransform: 'capitalize' }}>{t}</button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="cond-head" style={{ marginTop: 8 }}><span className="name">Sun</span></div>
+              <LabelSlider label="Angle" min={0} max={360} step={1}
+                value={sunAngle} onChange={setSunAngle} suffix="°" labelWidth={60} />
+              <LabelSlider label="Elevation" min={10} max={70} step={1}
+                value={sunElevation} onChange={setSunElevation} suffix="°" labelWidth={60} />
+
+              <div className="cond-head" style={{ marginTop: 8 }}><span className="name">Weathering</span></div>
+              <LabelSlider label="Shadow" min={0} max={100} step={1}
+                value={shadowDepth} onChange={setShadowDepth} suffix="%" labelWidth={60} />
+              <LabelSlider label="Streaks" min={0} max={100} step={1}
+                value={weathering} onChange={setWeathering} suffix="%" labelWidth={60} />
+
+              {roofType === 'flat' && (
+                <>
+                  <div className="cond-head" style={{ marginTop: 8 }}><span className="name">Zones</span></div>
+                  <LabelSlider label="Count" min={1} max={6} step={1}
+                    value={zoneCount} onChange={setZoneCount} suffix="" labelWidth={60} />
+                </>
+              )}
+            </div>
+          )}
+
           <div className="row">
             <span className="label" style={{ flexBasis: 60 }}>Style</span>
             <select className="select mono" value={preset}
@@ -170,8 +229,12 @@ export function Sidebar(props: SidebarProps) {
               value={paletteName}
               options={paletteSourceOptions}
               onChange={(v) => {
-                setPaletteName(v);
-                if (v !== 'Custom' && PALETTES[v]) setPalette([...PALETTES[v]]);
+                if (mode === 'Aerial') {
+                  onAerialPaletteChange(v);
+                } else {
+                  setPaletteName(v);
+                  if (v !== 'Custom' && PALETTES[v]) setPalette([...PALETTES[v]]);
+                }
               }}
               style={{ flex: 1 }}
             />
@@ -199,7 +262,7 @@ export function Sidebar(props: SidebarProps) {
         {/* ── PARAMETERS ──────────────────────────────── */}
         <Section title="Parameters" badge={`${pixelScale}px · ${density}%`}
           open={open.params} onToggle={() => toggle('params')}>
-          <LabelSlider label="Pixel scale" min={4} max={40} step={1}
+          <LabelSlider label={psLabel} min={psMin} max={psMax} step={1}
             value={pixelScale} onChange={setPixelScale} suffix="px" labelWidth={84} />
           <LabelSlider label="Density" min={0} max={100} step={1}
             value={density} onChange={setDensity} suffix="%" labelWidth={84} />
@@ -293,7 +356,7 @@ export function Sidebar(props: SidebarProps) {
                   <span className="label" style={{ flexBasis: 60 }}>Size</span>
                   <PixelSelect
                     value={exportSize}
-                    options={Object.keys(SIZE_PRESETS)}
+                    options={exportSizeOptions}
                     onChange={(v) => {
                       setExportSize(v);
                       if (v !== 'Custom') {

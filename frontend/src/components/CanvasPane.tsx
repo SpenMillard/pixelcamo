@@ -20,6 +20,10 @@ interface CanvasPaneProps {
   blendOpacity: number;
   blendType: string;
   dazzleShapes: DazzleShape[];
+  aerialRects: CamoRect[];
+  sunAngle: number;
+  sunElevation: number;
+  shadowDepth: number; // 0–100
   textureType: TextureType;
   tex: TextureParams;
   palette: string[];
@@ -36,7 +40,8 @@ interface CanvasPaneProps {
 export function CanvasPane({
   mode, preset, paletteName, passes, seed, tile, setTile, zoom, setZoom,
   rects, blendRects, blendDazzleShapes, blendBMode, blendOpacity, blendType,
-  dazzleShapes, textureType, tex, palette,
+  dazzleShapes, aerialRects, sunAngle, sunElevation, shadowDepth,
+  textureType, tex, palette,
   dpi, exportSize, exportW, exportH, presetModified,
   onRegenerateNewSeed, onExport, onBoxChange,
 }: CanvasPaneProps) {
@@ -305,6 +310,35 @@ export function CanvasPane({
                     }
                   </g>
                 </>
+              : mode === 'Aerial'
+              ? (() => {
+                  // Base tile / zone pattern
+                  const shadowDir = (sunAngle + 180) % 360;
+                  const sdRad = (shadowDir * Math.PI) / 180;
+                  const sx = Math.sin(sdRad);   // +ve = east/right
+                  const sy = -Math.cos(sdRad);  // +ve = south/down (SVG)
+                  const elevRad = (sunElevation * Math.PI) / 180;
+                  const lf = 1 / Math.tan(elevRad);
+                  const sw = Math.max(4, Math.round(canvasBox.w * 0.04 * lf));
+                  const opacity = (shadowDepth / 100) * 0.72;
+                  const { w, h } = canvasBox;
+                  return (
+                    <>
+                      <g>
+                        {aerialRects.map((r, i) =>
+                          <rect key={i} x={r.x} y={r.y} width={r.w} height={r.h} fill={r.fill} />
+                        )}
+                      </g>
+                      {/* Parapet / edge shadow strips */}
+                      <g>
+                        {sy < -0.2 && <rect x={0} y={0} width={w} height={sw} fill="#1e1c14" opacity={opacity} />}
+                        {sy > 0.2  && <rect x={0} y={h - sw} width={w} height={sw} fill="#1e1c14" opacity={opacity} />}
+                        {sx < -0.2 && <rect x={0} y={0} width={sw} height={h} fill="#1e1c14" opacity={opacity} />}
+                        {sx > 0.2  && <rect x={w - sw} y={0} width={sw} height={h} fill="#1e1c14" opacity={opacity} />}
+                      </g>
+                    </>
+                  );
+                })()
               : rects.map((r, i) => (
                   <rect key={i} x={r.x} y={r.y} width={r.w} height={r.h} fill={r.fill} />
                 ))

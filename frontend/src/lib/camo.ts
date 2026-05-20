@@ -117,6 +117,124 @@ export function camoToRects({ grid, cell, cols, rows, palette }: CamoResult & { 
   return rects;
 }
 
+// ── Aerial mode ───────────────────────────────────────────────
+
+/** Add delta (−255…+255) to each RGB channel — fast brightness tweak for tile variation. */
+function adjustBrightness(hex: string, delta: number): string {
+  const h = hex.replace('#', '');
+  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+  const r = clamp(parseInt(h.slice(0, 2), 16) + delta);
+  const g = clamp(parseInt(h.slice(2, 4), 16) + delta);
+  const b = clamp(parseInt(h.slice(4, 6), 16) + delta);
+  return '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
+}
+
+// Tile dimensions at pixelScale=14 (reference 300mm tile at A3/300dpi)
+// [tileW, tileH] in pixels, scaled by (pixelScale / 14)
+const TILE_DIMS: Record<string, [number, number]> = {
+  welsh_slate:           [20, 13],
+  clay_plain_tile:       [11, 18],
+  clay_pantile:          [22, 26],
+  concrete_interlocking: [26, 20],
+  fibre_cement_slate:    [36, 18],
+};
+
+function paletteNameToTileKey(name: string): string {
+  const map: Record<string, string> = {
+    'welsh slate':           'welsh_slate',
+    'clay plain tile':       'clay_plain_tile',
+    'clay pantile':          'clay_pantile',
+    'concrete interlocking': 'concrete_interlocking',
+    'fibre cement slate':    'fibre_cement_slate',
+  };
+  return map[name.toLowerCase().trim()] ?? 'clay_plain_tile';
+}
+
+function generatePitchedPreview(
+  width: number, height: number,
+  palette: string[],
+  pixelScale: number,
+  density: number,
+  seed: number,
+  paletteName: string,
+): CamoRect[] {
+  const rand = mulberry32(seed + 7);
+  const rects: CamoRect[] = [];
+
+  const key = paletteNameToTileKey(paletteName);
+  const [baseW, baseH] = TILE_DIMS[key] ?? [20, 14];
+  const scale = Math.max(0.5, pixelScale / 14);
+  const tileW = Math.max(6, Math.round(baseW * scale));
+  const tileH = Math.max(5, Math.round(baseH * scale));
+  const isPantile = key === 'clay_pantile';
+
+  const variationRange = density * 0.3; // ±0–30 brightness units
+
+  const numRows = Math.ceil(height / tileH) + 1;
+  const numCols = Math.ceil(width / tileW) + 2;
+
+  for (let row = 0; row < numRows; row++) {
+    const xOff = isPantile ? 0 : (row % 2) * Math.round(tileW / 2); // broken vs straight bond
+    const y = row * tileH;
+
+    for (let col = 0; col < numCols; col++) {
+      const x = col * tileW - xOff;
+      const baseColor = palette[Math.floor(rand() * 2) % palette.length];
+      const delta = (rand() - 0.5) * 2 * variationRange;
+
+      if (isPantile) {
+        // Barrel profile: 3 horizontal strips per tile
+        const topH = Math.round(tileH * 0.30);
+        const midH = Math.round(tileH * 0.40);
+        const botH = tileH - topH - midH;
+        rects.push({ x, y,               w: tileW - 1, h: topH, fill: adjustBrightness(baseColor, delta + 12) });
+        rects.push({ x, y: y + topH,     w: tileW - 1, h: midH, fill: adjustBrightness(baseColor, delta) });
+        rects.push({ x, y: y + topH + midH, w: tileW - 1, h: botH, fill: adjustBrightness(baseColor, delta - 10) });
+      } else {
+        rects.push({ x, y, w: tileW - 1, h: tileH - 1, fill: adjustBrightness(baseColor, delta) });
+      }
+    }
+
+    // Horizontal joint line at row boundary
+    const jointColor = palette[3] ?? palette[palette.length - 1];
+    rects.push({ x: 0, y: y + tileH - 1, w: width, h: 1, fill: jointColor });
+  }
+
+  return rects;
+}
+
+export interface AerialOpts {
+  width: number;
+  height: number;
+  palette: string[];
+  pixelScale: number;
+  density: number;
+  passes: number;
+  seed: number;
+  roofType: 'pitched' | 'flat';
+  zoneCount: number;
+  paletteName: string;
+}
+
+export function generateAerial(opts: AerialOpts): CamoRect[] {
+  const { width, height, palette, pixelScale, density, passes, seed, roofType, zoneCount, paletteName } = opts;
+
+  if (roofType === 'flat') {
+    // Coarse Voronoi zones — scale density to approximate zoneCount clusters
+    const zoneDensity = Math.max(0, Math.min(100, (zoneCount - 3) * 20 + 30));
+    const result = generateCamo({
+      width, height, palette,
+      pixelScale: Math.max(40, pixelScale),
+      density: zoneDensity,
+      passes: 1,
+      seed,
+    });
+    return camoToRects({ ...result, palette });
+  }
+
+  return generatePitchedPreview(width, height, palette, pixelScale, density, seed, paletteName);
+}
+
 // ── Dazzle mode (CV Dazzle) ────────────────────────────────────
 
 function rotatePoint(x: number, y: number, cx: number, cy: number, angleDeg: number): [number, number] {
