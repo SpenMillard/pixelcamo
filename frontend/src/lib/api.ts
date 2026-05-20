@@ -6,6 +6,8 @@ interface PywebviewApi {
   export_pattern(doc: PcmDocument, opts: ExportOpts): Promise<string>;
   get_recent(): Promise<string[]>;
   reveal_in_finder(path: string): Promise<void>;
+  save_palette(colors: string[]): Promise<string>;
+  load_palette(): Promise<string[] | null>;
 }
 
 declare global {
@@ -20,6 +22,8 @@ const devMock: PywebviewApi = {
   export_pattern: async () => '/tmp/export.png',
   get_recent: async () => [],
   reveal_in_finder: async () => {},
+  save_palette: async () => '/tmp/palette.json',
+  load_palette: async () => null,
 };
 
 export function getApi(): PywebviewApi {

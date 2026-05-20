@@ -93,6 +93,7 @@ export interface ExportOpts {
   height: number;
   dpi: number;
   format: string;
+  tileable_suffix?: boolean;
 }
 
 export interface PatternShape {

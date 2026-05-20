@@ -81,7 +81,7 @@ export default function App({ isDevWrapper }: AppProps) {
 
   const [dirty, setDirty] = useState(false);
   const [docPath, setDocPath] = useState<string | null>(null);
-  const [status, setStatus] = useState<'Idle' | 'Rendering…' | 'Error'>('Idle');
+  const [status, setStatus] = useState<string>('Idle');
 
   // ── Canvas box (set by CanvasPane ResizeObserver) ────────────
   const [canvasBox, setCanvasBox] = useState({ w: 640, h: 480 });

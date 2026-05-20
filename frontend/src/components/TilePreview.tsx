@@ -43,24 +43,18 @@ export function TilePreview({ rects, microRects, microWeight, canvasBox, texture
             <g
               key={`${row}-${col}`}
               transform={`translate(${col * W}, ${row * H})`}
-              opacity={isCentre ? 1 : 0.85}
             >
               {cellContent}
               {isCentre && (
                 <rect x={0} y={0} width={W} height={H}
                   fill="none"
-                  stroke="rgba(232,149,42,0.5)"
-                  strokeWidth="2" />
+                  stroke="rgba(232,149,42,0.6)"
+                  strokeWidth="1.5" />
               )}
             </g>
           );
         })
       )}
-      {/* Seam grid lines */}
-      <line x1={W}   y1={0}    x2={W}   y2={H * 3} stroke="rgba(232,149,42,0.2)" strokeWidth="1" strokeDasharray="4 6" />
-      <line x1={W*2} y1={0}    x2={W*2} y2={H * 3} stroke="rgba(232,149,42,0.2)" strokeWidth="1" strokeDasharray="4 6" />
-      <line x1={0}   y1={H}    x2={W*3} y2={H}     stroke="rgba(232,149,42,0.2)" strokeWidth="1" strokeDasharray="4 6" />
-      <line x1={0}   y1={H*2}  x2={W*3} y2={H*2}   stroke="rgba(232,149,42,0.2)" strokeWidth="1" strokeDasharray="4 6" />
     </svg>
   );
 }

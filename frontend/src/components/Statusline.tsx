@@ -1,5 +1,5 @@
 interface StatuslineProps {
-  status: 'Idle' | 'Rendering…' | 'Error';
+  status: string;
   genMs: number;
   cols: number;
   rows: number;
@@ -7,7 +7,11 @@ interface StatuslineProps {
 }
 
 export function Statusline({ status, genMs, cols, rows, rectCount }: StatuslineProps) {
-  const statusColor = status === 'Error' ? 'var(--bad)' : status === 'Rendering…' ? 'var(--warn)' : 'var(--good)';
+  const statusColor = status === 'Error' || status.startsWith('⚠')
+    ? 'var(--bad)'
+    : status === 'Rendering…'
+    ? 'var(--warn)'
+    : 'var(--good)';
   return (
     <div className="statusline">
       <div className="item">
