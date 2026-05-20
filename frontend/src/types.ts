@@ -43,6 +43,7 @@ export interface PcmDocument {
   preset: string;
   paletteName?: string;
   palette: string[];
+  locked?: boolean[];
   params: {
     pixel_scale: number;
     density: number;

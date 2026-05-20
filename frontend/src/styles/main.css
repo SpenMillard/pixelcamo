@@ -548,6 +548,35 @@ button { cursor: pointer; }
   outline-offset: 1px;
 }
 
+/* Lock button — top-left of swatch, hidden until hover or locked */
+.swatch .lock-btn {
+  position: absolute;
+  top: 3px; left: 3px;
+  width: 14px; height: 14px;
+  background: rgba(0,0,0,0.55);
+  border: none;
+  border-radius: 3px;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0;
+  cursor: pointer;
+  padding: 0;
+  transition: opacity 100ms;
+  z-index: 2;
+  color: #fff;
+}
+.swatch:hover .lock-btn { opacity: 1; }
+.swatch.locked .lock-btn { opacity: 1; color: var(--accent); }
+
+/* Locked swatch — amber outline */
+.swatch.locked {
+  outline: 1.5px solid var(--accent);
+  outline-offset: 1px;
+}
+.swatch.locked.selected {
+  outline: 2px solid var(--accent-hi);
+  outline-offset: 1px;
+}
+
 /* Harmony strip */
 .harmony-strip {
   height: 24px;

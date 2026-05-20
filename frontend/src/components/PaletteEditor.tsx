@@ -1,29 +1,55 @@
 import { Icon } from '../icons';
 
+const LockIcon = () => (
+  <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+    <rect x="2" y="4.5" width="6" height="4.5" rx="1" stroke="currentColor" strokeWidth="1"/>
+    <path d="M3.5 4.5V3a1.5 1.5 0 013 0v1.5" stroke="currentColor" strokeWidth="1"
+          strokeLinecap="round"/>
+  </svg>
+);
+
+const LockOpenIcon = () => (
+  <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+    <rect x="2" y="4.5" width="6" height="4.5" rx="1" stroke="currentColor" strokeWidth="1"
+          opacity="0.4"/>
+    <path d="M3.5 4.5V3a1.5 1.5 0 013 0" stroke="currentColor" strokeWidth="1"
+          strokeLinecap="round" opacity="0.4"/>
+  </svg>
+);
+
 interface PaletteEditorProps {
   colors: string[];
   selected: number;
+  locked: boolean[];
   onSelect: (i: number) => void;
   onChange: (i: number, c: string) => void;
   onAdd: () => void;
   onRemove: (i: number) => void;
+  onToggleLock: (i: number) => void;
   onSave: () => void;
   onLoad: () => void;
 }
 
-export function PaletteEditor({ colors, selected, onSelect, onChange, onAdd, onRemove, onSave, onLoad }: PaletteEditorProps) {
+export function PaletteEditor({ colors, selected, locked, onSelect, onChange, onAdd, onRemove, onToggleLock, onSave, onLoad }: PaletteEditorProps) {
   return (
     <div>
       <div className="palette">
         {colors.map((c, i) => (
           <div
             key={i}
-            className={`swatch${selected === i ? ' selected' : ''}`}
+            className={`swatch${selected === i ? ' selected' : ''}${locked[i] ? ' locked' : ''}`}
             style={{ background: c }}
             onClick={() => onSelect(i)}
             onDoubleClick={() => onRemove(i)}
             title={c}
           >
+            <button
+              className="lock-btn"
+              onClick={(e) => { e.stopPropagation(); onToggleLock(i); }}
+              title={locked[i] ? 'Unlock swatch' : 'Lock swatch'}
+            >
+              {locked[i] ? <LockIcon /> : <LockOpenIcon />}
+            </button>
             <span className="hex">{c.toUpperCase().slice(1)}</span>
           </div>
         ))}

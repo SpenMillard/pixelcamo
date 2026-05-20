@@ -45,10 +45,14 @@ interface SidebarProps {
   harmonyBase: string; setHarmonyBase: (v: string) => void;
   harmonyType: HarmonyType; setHarmonyType: (v: HarmonyType) => void;
   open: SectionOpen; toggle: (k: keyof SectionOpen) => void;
+  locked: boolean[];
+  onToggleLock: (i: number) => void;
   onApplyHarmony: () => void;
   presetModified: boolean;
   loadPreset: (name: string) => void;
-  onRandomiseSeed: () => void;
+  onRandomisePalette: () => void;
+  onAddSwatch: () => void;
+  onRemoveSwatch: (i: number) => void;
   onSavePalette: () => void;
   onLoadPalette: () => void;
   // Export section
@@ -73,7 +77,9 @@ export function Sidebar(props: SidebarProps) {
     onAerialPaletteChange,
     textureType, setTextureType, tex, setT,
     harmonyBase, setHarmonyBase, harmonyType, setHarmonyType,
-    open, toggle, onApplyHarmony, presetModified, loadPreset, onRandomiseSeed,
+    locked, onToggleLock,
+    open, toggle, onApplyHarmony, presetModified, loadPreset, onRandomisePalette,
+    onAddSwatch, onRemoveSwatch,
     onSavePalette, onLoadPalette,
     exportSize, setExportSize, exportW, setExportW, exportH, setExportH,
     dpi, setDpi, format, setFormat, onExport,
@@ -214,7 +220,12 @@ export function Sidebar(props: SidebarProps) {
               value={seed}
               onChange={(e) => setSeed(Number(e.target.value) || 0)}
             />
-            <button className="btn ghost icon-only" title="Randomise (space)" onClick={onRandomiseSeed}>
+            <button
+              className="btn ghost icon-only"
+              title={locked.every(Boolean) ? 'Unlock a swatch to randomise' : 'Randomise (space)'}
+              onClick={onRandomisePalette}
+              style={{ opacity: locked.every(Boolean) ? 0.35 : 1, pointerEvents: locked.every(Boolean) ? 'none' : 'auto' }}
+            >
               {Icon.dice}
             </button>
           </div>
@@ -242,18 +253,15 @@ export function Sidebar(props: SidebarProps) {
           <PaletteEditor
             colors={palette}
             selected={selectedSwatch}
+            locked={locked}
             onSelect={setSelectedSwatch}
             onChange={(i, c) => {
               const next = [...palette]; next[i] = c; setPalette(next);
               setPaletteName('Custom');
             }}
-            onAdd={() => setPalette([...palette, '#888888'])}
-            onRemove={(i) => {
-              if (palette.length <= 2) return;
-              const next = palette.filter((_, idx) => idx !== i);
-              setPalette(next);
-              setSelectedSwatch(Math.min(selectedSwatch, next.length - 1));
-            }}
+            onAdd={onAddSwatch}
+            onRemove={onRemoveSwatch}
+            onToggleLock={onToggleLock}
             onSave={onSavePalette}
             onLoad={onLoadPalette}
           />

@@ -27,6 +27,7 @@ export default function App({ isDevWrapper }: AppProps) {
   const [paletteName, setPaletteName] = useState('Woodland');
   const [palette, setPalette] = useState<string[]>([...PALETTES.Woodland]);
   const [selectedSwatch, setSelectedSwatch] = useState(0);
+  const [locked, setLocked] = useState<boolean[]>(() => Array(PALETTES.Woodland.length).fill(false));
   const [seed, setSeed] = useState(42081);
   const [pixelScale, setPixelScale] = useState(14);
   const [density, setDensity] = useState(58);
@@ -170,6 +171,7 @@ export default function App({ isDevWrapper }: AppProps) {
     setPreset(name);
     setMode(p.mode);
     setPalette([...p.palette]);
+    setLocked(Array(p.palette.length).fill(false));
     setPaletteName(p.paletteName);
     setPixelScale(p.pixelScale);
     setDensity(p.density);
@@ -196,11 +198,62 @@ export default function App({ isDevWrapper }: AppProps) {
         || JSON.stringify(palette) !== JSON.stringify(p.palette);
   }, [preset, mode, pixelScale, density, passes, textureType, palette]);
 
+  // ── HSL → hex helper ────────────────────────────────────────
+  const hslToHex = (h: number, s: number, l: number): string => {
+    h = ((h % 360) + 360) % 360; s = s / 100; l = l / 100;
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+    const m = l - c / 2;
+    let r = 0, g = 0, b = 0;
+    if (h < 60) { r = c; g = x; } else if (h < 120) { r = x; g = c; }
+    else if (h < 180) { g = c; b = x; } else if (h < 240) { g = x; b = c; }
+    else if (h < 300) { r = x; b = c; } else { r = c; b = x; }
+    const f = (v: number) => Math.round((v + m) * 255).toString(16).padStart(2, '0');
+    return '#' + f(r) + f(g) + f(b);
+  };
+
   // ── Actions ─────────────────────────────────────────────────
   const regenerateNewSeed = useCallback(() => {
     setSeed(Math.floor(Math.random() * 999999));
     setDirty(true);
   }, []);
+
+  // Randomise unlocked palette colours + new seed
+  const randomisePalette = useCallback(() => {
+    setPalette(prev => prev.map((colour, i) => {
+      if (locked[i]) return colour;
+      const h = Math.floor(Math.random() * 360);
+      const s = 15 + Math.floor(Math.random() * 30);
+      const l = 20 + Math.floor(Math.random() * 35);
+      return hslToHex(h, s, l);
+    }));
+    setPaletteName('Custom');
+    setSeed(Math.floor(Math.random() * 999999));
+    setDirty(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locked]);
+
+  const handleToggleLock = useCallback((i: number) => {
+    setLocked(prev => prev.map((v, idx) => idx === i ? !v : v));
+  }, []);
+
+  const handleAddSwatch = useCallback(() => {
+    setPalette(prev => [...prev, '#888888']);
+    setLocked(prev => [...prev, false]);
+  }, []);
+
+  const handleRemoveSwatch = useCallback((i: number) => {
+    setPalette(prev => {
+      if (prev.length <= 2) return prev;
+      return prev.filter((_, idx) => idx !== i);
+    });
+    setLocked(prev => {
+      if (prev.length <= 2) return prev;
+      return prev.filter((_, idx) => idx !== i);
+    });
+    setSelectedSwatch(prev => Math.min(prev, palette.length - 2));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [palette.length]);
 
   const handleApplyHarmony = useCallback(() => {
     // Compute harmony colors — same logic as HarmonyPreview
@@ -251,6 +304,7 @@ export default function App({ isDevWrapper }: AppProps) {
     preset,
     paletteName,
     palette,
+    locked,
     params: { pixel_scale: pixelScale, density, passes, seed },
     blend: { opacity: blendOpacity, type: blendType.toLowerCase() },
     blendB: { mode: blendBMode.toLowerCase(), pixelScale: blendBPixelScale, density: blendBDensity, passes: blendBPasses },
@@ -271,7 +325,7 @@ export default function App({ isDevWrapper }: AppProps) {
     },
     harmony: { base: harmonyBase, type: harmonyType },
     tile,
-  }), [mode, preset, paletteName, palette, pixelScale, density, passes, seed,
+  }), [mode, preset, paletteName, palette, locked, pixelScale, density, passes, seed,
       blendOpacity, blendType, blendBMode, blendBPixelScale, blendBDensity, blendBPasses,
       roofType, sunAngle, sunElevation, shadowDepth, weathering, zoneCount,
       textureType, tex, harmonyBase, harmonyType, tile]);
@@ -282,6 +336,7 @@ export default function App({ isDevWrapper }: AppProps) {
     setMode(cap(doc.mode) as Mode);
     setPreset(doc.preset);
     setPalette(doc.palette);
+    setLocked(doc.locked ?? Array(doc.palette.length).fill(false));
     const name = Object.entries(PALETTES).find(([, c]) => JSON.stringify(c) === JSON.stringify(doc.palette))?.[0] ?? 'Custom';
     setPaletteName(name);
     setPixelScale(doc.params.pixel_scale);
@@ -482,11 +537,15 @@ export default function App({ isDevWrapper }: AppProps) {
           tex={tex} setT={setT}
           harmonyBase={harmonyBase} setHarmonyBase={setHarmonyBase}
           harmonyType={harmonyType} setHarmonyType={setHarmonyType}
+          locked={locked}
+          onToggleLock={handleToggleLock}
           open={open} toggle={toggle}
           onApplyHarmony={handleApplyHarmony}
           presetModified={presetModified}
           loadPreset={loadPreset}
-          onRandomiseSeed={regenerateNewSeed}
+          onRandomisePalette={randomisePalette}
+          onAddSwatch={handleAddSwatch}
+          onRemoveSwatch={handleRemoveSwatch}
           onSavePalette={handleSavePalette}
           onLoadPalette={handleLoadPalette}
           roofType={roofType} setRoofType={setRoofType}

@@ -99,6 +99,7 @@ def _render_camo(
     passes: int,
     seed: int,
     tile: bool,
+    locked: list[bool] | None = None,
 ) -> Image.Image:
     cell = max(4, min(60, pixel_scale))
     cols = math.ceil(width / cell)
@@ -106,14 +107,22 @@ def _render_camo(
     cluster_count = max(3, round(6 + (density / 100) * 40))
     noise_scale = 0.18
 
+    # Build pool of assignable palette indices (exclude locked swatches)
+    if locked:
+        assignable = [i for i, lk in enumerate(locked) if not lk]
+    else:
+        assignable = list(range(len(palette)))
+    if not assignable:
+        assignable = list(range(len(palette)))
+
     grid = np.zeros((rows, cols), dtype=np.uint8)
     rand = mulberry32(seed)
 
     for p in range(passes):
-        # Pick cluster centres
+        # Pick cluster centres — colour drawn from assignable pool only
         px_arr = np.array([rand() * cols for _ in range(cluster_count)])
         py_arr = np.array([rand() * rows for _ in range(cluster_count)])
-        pc_arr = np.array([int(rand() * len(palette)) % len(palette) for _ in range(cluster_count)])
+        pc_arr = np.array([assignable[int(rand() * len(assignable)) % len(assignable)] for _ in range(cluster_count)])
 
         # Build coordinate arrays with warp noise
         c_idx = np.arange(cols)
@@ -745,6 +754,7 @@ def render_pattern(doc: dict, opts: dict) -> Image.Image:
     """
     mode = doc.get('mode', 'camo')
     palette = doc.get('palette', ['#2d3a26', '#4a5239', '#6e7155', '#2a2622'])
+    locked = doc.get('locked', [False] * len(palette))
     params = doc.get('params', {})
     pixel_scale = int(params.get('pixel_scale', 14))
     density = int(params.get('density', 58))
@@ -767,11 +777,11 @@ def render_pattern(doc: dict, opts: dict) -> Image.Image:
         b_density = int(blend_b.get('density', min(100, density + 20)))
         b_passes = int(blend_b.get('passes', passes))
         b_seed = (seed ^ 0xA5A5A5A5) & 0xFFFFFFFF
-        layer_a = _render_camo(width, height, palette, pixel_scale, density, passes, seed, tile)
+        layer_a = _render_camo(width, height, palette, pixel_scale, density, passes, seed, tile, locked)
         if b_mode == 'dazzle':
             layer_b = _render_dazzle(width, height, palette, b_pixel_scale, b_density, b_passes, b_seed, tile)
         else:
-            layer_b = _render_camo(width, height, palette, b_pixel_scale, b_density, b_passes, b_seed, tile)
+            layer_b = _render_camo(width, height, palette, b_pixel_scale, b_density, b_passes, b_seed, tile, locked)
         try:
             import blend_modes as bm
             mode_map = {
@@ -841,7 +851,7 @@ def render_pattern(doc: dict, opts: dict) -> Image.Image:
         return img
 
     else:
-        img = _render_camo(width, height, palette, pixel_scale, density, passes, seed, tile)
+        img = _render_camo(width, height, palette, pixel_scale, density, passes, seed, tile, locked)
 
     # Apply texture overlay
     tex = doc.get('texture', {})

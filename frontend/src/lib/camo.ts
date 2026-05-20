@@ -11,6 +11,7 @@ export interface CamoOpts {
   passes: number;
   seed: number;
   tile?: boolean;
+  locked?: boolean[];
 }
 
 export interface CamoResult {
@@ -48,11 +49,17 @@ export function mulberry32(seed: number): () => number {
 
 // ── Camo mode ─────────────────────────────────────────────────
 
-export function generateCamo({ width, height, palette, pixelScale, density, passes, seed, tile }: CamoOpts): CamoResult {
+export function generateCamo({ width, height, palette, pixelScale, density, passes, seed, tile, locked }: CamoOpts): CamoResult {
   const cell = Math.max(4, Math.min(60, Math.round(pixelScale)));
   const cols = Math.ceil(width / cell);
   const rows = Math.ceil(height / cell);
   const clusterCount = Math.max(3, Math.round(6 + (density / 100) * 40));
+
+  // Build pool of assignable palette indices (exclude locked swatches from cluster colour picks)
+  const assignable = palette
+    .map((_, i) => i)
+    .filter(i => !locked || !locked[i]);
+  const pool = assignable.length > 0 ? assignable : palette.map((_, i) => i);
 
   const grid: number[][] = [];
   for (let r = 0; r < rows; r++) grid.push(new Array(cols).fill(0));
@@ -62,7 +69,7 @@ export function generateCamo({ width, height, palette, pixelScale, density, pass
   for (let p = 0; p < passes; p++) {
     const points: { x: number; y: number; c: number }[] = [];
     for (let i = 0; i < clusterCount; i++) {
-      points.push({ x: rand() * cols, y: rand() * rows, c: Math.floor(rand() * palette.length) });
+      points.push({ x: rand() * cols, y: rand() * rows, c: pool[Math.floor(rand() * pool.length)] });
     }
 
     const noiseScale = 0.18;
