@@ -11,7 +11,6 @@ export const PALETTES: Record<string, string[]> = {
   Brick:     ['#7a4a38', '#5c3428', '#9a6248', '#3e2218', '#b87a5a'],
   Gravel:    ['#7a7268', '#5e5850', '#948c80', '#46423c', '#aaa49c'],
   Soil:      ['#4a3828', '#362818', '#5e4c38', '#241a10', '#444444'],
-  Midnight:  ['#06070c', '#0d0f18', '#030408', '#14161f', '#020309'],
   Night:     ['#06070c', '#0d0f18', '#030408', '#14161f', '#020309'],
   // ── Dazzle palettes ────────────────────────────────────────────
   'B/W':   ['#000000', '#ffffff', '#1a1a1a', '#e0e0e0'],
@@ -34,7 +33,7 @@ export const PALETTES: Record<string, string[]> = {
 
 export const CAMO_PALETTE_NAMES = [
   'Woodland', 'Desert', 'Urban', 'Arctic', 'Jungle',
-  'Tarmac', 'Concrete', 'Brick', 'Gravel', 'Soil', 'Midnight', 'Night',
+  'Tarmac', 'Concrete', 'Brick', 'Gravel', 'Soil', 'Night',
 ];
 
 export const DAZZLE_PALETTE_NAMES = ['B/W', 'Blue', 'Red', 'Gold'];
@@ -69,7 +68,7 @@ export const PRESETS_DATA: Record<string, PresetSnapshot> = {
   'Tiger Stripe':    { mode: 'Camo',   paletteName: 'Woodland', palette: PALETTES.Woodland,  pixelScale: 18, density: 65, passes: 2, textureType: 'Scratch' },
   'Sahara Tan':      { mode: 'Camo',   paletteName: 'Desert', palette: PALETTES.Desert,  pixelScale: 16, density: 50, passes: 2, textureType: 'None' },
   'Arctic Splinter': { mode: 'Camo',   paletteName: 'Arctic', palette: PALETTES.Arctic,  pixelScale: 14, density: 55, passes: 2, textureType: 'None' },
-  'Night Patrol':    { mode: 'Blend',  paletteName: 'Night',  palette: PALETTES.Night,   pixelScale: 10, density: 60, passes: 3, textureType: 'Stipple' },
+  'Night Patrol':    { mode: 'Camo',   paletteName: 'Night',  palette: PALETTES.Night,   pixelScale: 10, density: 60, passes: 3, textureType: 'Stipple' },
 };
 
 export const PRESETS = Object.keys(PRESETS_DATA);
