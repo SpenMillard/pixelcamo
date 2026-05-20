@@ -36,6 +36,8 @@ export function Statusline({ status, genMs, cols, rows, rectCount }: StatuslineP
         <span>⌘T</span><span>tile</span>
         <span className="sep">·</span>
         <span>space</span><span>seed</span>
+        <span className="sep">·</span>
+        <span>V</span><span>vary</span>
       </div>
     </div>
   );

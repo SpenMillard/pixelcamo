@@ -72,6 +72,8 @@ export default function App({ isDevWrapper }: AppProps) {
     setOpen((prev) => ({ ...prev, [k]: !prev[k] }));
   }, []);
 
+  const [variationsOpen, setVariationsOpen] = useState(false);
+
   const [dirty, setDirty] = useState(false);
   const [docPath, setDocPath] = useState<string | null>(null);
   const [status, setStatus] = useState<'Idle' | 'Rendering…' | 'Error'>('Idle');
@@ -215,6 +217,12 @@ export default function App({ isDevWrapper }: AppProps) {
   // ── Actions ─────────────────────────────────────────────────
   const regenerateNewSeed = useCallback(() => {
     setSeed(Math.floor(Math.random() * 999999));
+    setDirty(true);
+  }, []);
+
+  const commitVariation = useCallback((chosenSeed: number) => {
+    setSeed(chosenSeed);
+    setVariationsOpen(false);
     setDirty(true);
   }, []);
 
@@ -487,10 +495,12 @@ export default function App({ isDevWrapper }: AppProps) {
       else if (cmd && e.key === '0') { e.preventDefault(); setZoom(100); }
       else if (cmd && e.key === '9') { e.preventDefault(); setZoom(100); }
       else if (e.key === ' ' && !cmd) { e.preventDefault(); regenerateNewSeed(); }
+      else if (e.key.toLowerCase() === 'v' && !cmd && mode !== 'Dazzle') { e.preventDefault(); setVariationsOpen(v => !v); }
+      else if (e.key === 'Escape' && variationsOpen) { e.preventDefault(); setVariationsOpen(false); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [regenerateNewSeed, handleExport]);
+  }, [regenerateNewSeed, handleExport, mode, variationsOpen]);
 
   // ── Aerial: switch export size defaults when entering/leaving ─
   useEffect(() => {
@@ -568,6 +578,12 @@ export default function App({ isDevWrapper }: AppProps) {
           paletteName={paletteName}
           passes={passes}
           seed={seed}
+          pixelScale={pixelScale}
+          density={density}
+          locked={locked}
+          variationsOpen={variationsOpen}
+          onToggleVariations={() => setVariationsOpen(v => !v)}
+          onCommitVariation={commitVariation}
           tile={tile} setTile={setTile}
           zoom={zoom} setZoom={setZoom}
           rects={rects}

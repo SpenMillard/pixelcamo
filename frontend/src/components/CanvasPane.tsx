@@ -4,6 +4,7 @@ import { SIZE_PRESETS } from '../data/constants';
 import { mulberry32 } from '../lib/camo';
 import type { CamoRect, DazzleShape } from '../lib/camo';
 import type { Mode, TextureParams, TextureType } from '../types';
+import { VariationsGrid, VariationsIcon } from './VariationsGrid';
 
 interface CanvasPaneProps {
   mode: Mode;
@@ -31,7 +32,13 @@ interface CanvasPaneProps {
   exportSize: string;
   exportW: number;
   exportH: number;
+  pixelScale: number;
+  density: number;
   presetModified: boolean;
+  locked?: boolean[];
+  variationsOpen: boolean;
+  onToggleVariations: () => void;
+  onCommitVariation: (seed: number) => void;
   onRegenerateNewSeed: () => void;
   onExport: () => void;
   onBoxChange: (w: number, h: number) => void;
@@ -41,8 +48,9 @@ export function CanvasPane({
   mode, preset, paletteName, passes, seed, tile, setTile, zoom, setZoom,
   rects, blendRects, blendDazzleShapes, blendBMode, blendOpacity, blendType,
   dazzleShapes, aerialRects, sunAngle, sunElevation, shadowDepth,
-  textureType, tex, palette,
+  textureType, tex, palette, locked, pixelScale, density,
   dpi, exportSize, exportW, exportH, presetModified,
+  variationsOpen, onToggleVariations, onCommitVariation,
   onRegenerateNewSeed, onExport, onBoxChange,
 }: CanvasPaneProps) {
   const canvasWrapRef = useRef<HTMLDivElement>(null);
@@ -256,6 +264,16 @@ export function CanvasPane({
               {tile ? 'ON' : 'OFF'}
             </span>
           </button>
+          <button
+            className={`btn ghost toolbar-primary${variationsOpen ? ' active-ghost' : ''}`}
+            onClick={onToggleVariations}
+            title="Variations grid (V)"
+            disabled={mode === 'Dazzle'}
+            style={{ opacity: mode === 'Dazzle' ? 0.35 : 1 }}
+          >
+            <VariationsIcon />
+            <span className="btn-label">Vary</span>
+          </button>
           <button className="btn toolbar-primary" onClick={onExport} title="Export (⌘E)">
             {Icon.download} <span className="btn-label">Export</span>
           </button>
@@ -270,7 +288,20 @@ export function CanvasPane({
         className="canvas-area"
         ref={canvasWrapRef}
         onClick={(e) => { if (e.target === e.currentTarget) onRegenerateNewSeed(); }}
+        style={{ position: 'relative' }}
       >
+        {variationsOpen && (
+          <VariationsGrid
+            seed={seed}
+            palette={palette}
+            locked={locked}
+            pixelScale={pixelScale}
+            density={density}
+            passes={passes}
+            onCommit={onCommitVariation}
+            onDismiss={onToggleVariations}
+          />
+        )}
         <div
           className="canvas-frame"
           style={{ width: scaledW, height: scaledH }}
