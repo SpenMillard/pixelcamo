@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useMemo } from 'react';
+import { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import { Icon } from '../icons';
 import { SIZE_PRESETS } from '../data/constants';
 import { mulberry32 } from '../lib/camo';
@@ -58,6 +58,36 @@ export function CanvasPane({
 }: CanvasPaneProps) {
   const canvasWrapRef = useRef<HTMLDivElement>(null);
   const [canvasBox, setCanvasBox] = useState({ w: 640, h: 480 });
+
+  // ── Pan state ─────────────────────────────────────────────────
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
+
+  // Reset pan when zoom returns to 100% or less
+  useEffect(() => {
+    if (zoom <= 100) setPanOffset({ x: 0, y: 0 });
+  }, [zoom]);
+
+  const handlePanStart = useCallback((e: React.MouseEvent) => {
+    if (zoom <= 100) return;
+    e.preventDefault();
+    dragRef.current = { startX: e.clientX, startY: e.clientY, originX: panOffset.x, originY: panOffset.y };
+    setIsDragging(true);
+  }, [zoom, panOffset]);
+
+  const handlePanMove = useCallback((e: React.MouseEvent) => {
+    if (!dragRef.current) return;
+    setPanOffset({
+      x: dragRef.current.originX + (e.clientX - dragRef.current.startX),
+      y: dragRef.current.originY + (e.clientY - dragRef.current.startY),
+    });
+  }, []);
+
+  const handlePanEnd = useCallback(() => {
+    dragRef.current = null;
+    setIsDragging(false);
+  }, []);
 
   useEffect(() => {
     if (!canvasWrapRef.current) return;
@@ -290,8 +320,15 @@ export function CanvasPane({
       <div
         className="canvas-area"
         ref={canvasWrapRef}
-        onClick={(e) => { if (e.target === e.currentTarget) onRegenerateNewSeed(); }}
-        style={{ position: 'relative' }}
+        style={{
+          position: 'relative',
+          cursor: zoom > 100 ? (isDragging ? 'grabbing' : 'grab') : 'default',
+          userSelect: isDragging ? 'none' : 'auto',
+        }}
+        onMouseDown={handlePanStart}
+        onMouseMove={handlePanMove}
+        onMouseUp={handlePanEnd}
+        onMouseLeave={handlePanEnd}
       >
         {variationsOpen && (
           <VariationsGrid
@@ -307,8 +344,11 @@ export function CanvasPane({
         )}
         <div
           className="canvas-frame"
-          style={{ width: scaledW, height: scaledH }}
-          onClick={onRegenerateNewSeed}
+          style={{
+            width: scaledW,
+            height: scaledH,
+            transform: zoom > 100 ? `translate(${panOffset.x}px, ${panOffset.y}px)` : undefined,
+          }}
         >
           <span className="corner tl" />
           <span className="corner tr" />
