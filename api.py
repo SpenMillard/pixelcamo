@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 import webview
 
-from renderer import render_pattern
+from renderer import render_pattern, verify_seamless
 
 if TYPE_CHECKING:
     pass
@@ -107,10 +107,20 @@ class PixelcamoApi:
     def export_pattern(self, doc: dict, opts: dict) -> str:
         """
         Render and save the pattern.  opts: {width, height, dpi, format}.
+        For tileable export, also accepts opts: {tileable_suffix: True}.
         Returns the saved path, or '' on cancel/error.
         """
         window = webview.windows[0]
-        fmt = str(opts.get('format', 'PNG')).upper()
+        tileable = bool(opts.get('tileable_suffix', False))
+
+        # Tileable export is always PNG; force tile=True in the doc
+        if tileable:
+            doc = dict(doc)
+            doc['tile'] = True
+            fmt = 'PNG'
+        else:
+            fmt = str(opts.get('format', 'PNG')).upper()
+
         ext = '.pdf' if fmt == 'PDF' else '.png'
 
         # Work out a default filename from the doc path or preset
@@ -119,6 +129,10 @@ class PixelcamoApi:
             base_name = Path(doc['_path']).stem
         elif doc.get('preset') and doc['preset'] != '— Custom —':
             base_name = doc['preset'].replace(' ', '_')
+
+        # Append _tile suffix for tileable exports
+        if tileable:
+            base_name = f'{base_name}_tile'
 
         result = window.create_file_dialog(
             webview.SAVE_DIALOG,
@@ -138,12 +152,21 @@ class PixelcamoApi:
         try:
             img = render_pattern(doc, opts)
 
+            # Seam verification for tileable exports at passes=3
+            seam_warning = False
+            if tileable:
+                passes = int(doc.get('params', {}).get('passes', 2))
+                if passes >= 3:
+                    if not verify_seamless(img):
+                        seam_warning = True
+                        print('⚠ Tileable export: seam verification failed — edges do not match within tolerance')
+
             if fmt == 'PDF':
                 _save_pdf(img, save_path, opts)
             else:
                 img.save(save_path, 'PNG', dpi=(opts.get('dpi', 300), opts.get('dpi', 300)))
 
-            return save_path
+            return save_path if not seam_warning else f'{save_path}::seam_warning'
         except Exception:
             traceback.print_exc()
             return ''

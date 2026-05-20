@@ -5,6 +5,8 @@ import { mulberry32 } from '../lib/camo';
 import type { CamoRect, DazzleShape } from '../lib/camo';
 import type { Mode, TextureParams, TextureType } from '../types';
 import { VariationsGrid, VariationsIcon } from './VariationsGrid';
+import { TilePreview } from './TilePreview';
+import type { TileState } from '../types';
 
 interface CanvasPaneProps {
   mode: Mode;
@@ -12,7 +14,7 @@ interface CanvasPaneProps {
   paletteName: string;
   passes: number;
   seed: number;
-  tile: boolean; setTile: (v: boolean) => void;
+  tileState: TileState; setTileState: (s: TileState | ((prev: TileState) => TileState)) => void;
   zoom: number; setZoom: (v: number) => void;
   rects: CamoRect[];
   blendRects: CamoRect[];
@@ -43,18 +45,19 @@ interface CanvasPaneProps {
   onCommitVariation: (seed: number) => void;
   onRegenerateNewSeed: () => void;
   onExport: () => void;
+  onTileableExport: () => void;
   onBoxChange: (w: number, h: number) => void;
 }
 
 export function CanvasPane({
-  mode, preset, paletteName, passes, seed, tile, setTile, zoom, setZoom,
+  mode, preset, paletteName, passes, seed, tileState, setTileState, zoom, setZoom,
   rects, blendRects, blendDazzleShapes, blendBMode, blendOpacity, blendType,
   dazzleShapes, aerialRects, sunAngle, sunElevation, shadowDepth,
   textureType, tex, palette, locked, pixelScale, density,
   microRects, microWeight,
   dpi, exportSize, exportW, exportH, presetModified,
   variationsOpen, onToggleVariations, onCommitVariation,
-  onRegenerateNewSeed, onExport, onBoxChange,
+  onRegenerateNewSeed, onExport, onTileableExport, onBoxChange,
 }: CanvasPaneProps) {
   const canvasWrapRef = useRef<HTMLDivElement>(null);
   const [canvasBox, setCanvasBox] = useState({ w: 640, h: 480 });
@@ -290,11 +293,13 @@ export function CanvasPane({
             #{seed.toString().padStart(6, '0')}
           </span>
           <div className="toolbar-sep" />
-          <button className="btn ghost toolbar-tile" onClick={() => setTile(!tile)} title="Toggle tile (⌘T)">
-            <span style={{ color: tile ? 'var(--accent)' : 'var(--fg-3)' }}>{Icon.tile}</span>
+          <button className="btn ghost toolbar-tile"
+            onClick={() => setTileState(s => s === 'off' ? 'guides' : s === 'guides' ? 'preview' : 'off')}
+            title="Toggle tile (⌘T)">
+            <span style={{ color: tileState !== 'off' ? 'var(--accent)' : 'var(--fg-3)' }}>{Icon.tile}</span>
             <span className="btn-label">Tile</span>
-            <span className="mono" style={{ color: tile ? 'var(--accent)' : 'var(--fg-3)', fontSize: 10 }}>
-              {tile ? 'ON' : 'OFF'}
+            <span className="mono" style={{ color: tileState !== 'off' ? 'var(--accent)' : 'var(--fg-3)', fontSize: 10 }}>
+              {tileState === 'off' ? 'OFF' : tileState === 'guides' ? 'ON' : '3×3'}
             </span>
           </button>
           <button
@@ -307,6 +312,11 @@ export function CanvasPane({
             <VariationsIcon />
             <span className="btn-label">Vary</span>
           </button>
+          {tileState !== 'off' && (
+            <button className="btn ghost toolbar-primary" onClick={onTileableExport} title="Export seamless tile (⇧⌘E)">
+              {Icon.tile} <span className="btn-label">Export Tile</span>
+            </button>
+          )}
           <button className="btn toolbar-primary" onClick={onExport} title="Export (⌘E)">
             {Icon.download} <span className="btn-label">Export</span>
           </button>
@@ -356,82 +366,94 @@ export function CanvasPane({
           <span className="corner br" />
 
           <span className="canvas-dim">
-            {displayW} × {displayH}px · {dpi} dpi
+            {tileState === 'preview'
+              ? `repeat unit: ${canvasBox.w} × ${canvasBox.h}px · 3×3 shown`
+              : `${displayW} × ${displayH}px · ${dpi} dpi`}
           </span>
           <span className="canvas-dim right">
             {paletteName.toUpperCase()} · {palette.length}c
           </span>
 
-          <svg
-            className="camo-svg"
-            viewBox={`0 0 ${canvasBox.w} ${canvasBox.h}`}
-            width="100%" height="100%"
-            preserveAspectRatio="xMidYMid slice"
-            shapeRendering="crispEdges"
-          >
-            {mode === 'Dazzle'
-              ? dazzleShapes.map((s, i) => (
-                  <polygon key={i} points={s.pts.map(([x, y]) => `${x},${y}`).join(' ')} fill={s.fill} />
-                ))
-              : mode === 'Blend'
-              ? <>
-                  <g>{rects.map((r, i) => <rect key={i} x={r.x} y={r.y} width={r.w} height={r.h} fill={r.fill} />)}</g>
-                  <g opacity={blendOpacity / 100}
-                     style={{ mixBlendMode: blendType.toLowerCase() as React.CSSProperties['mixBlendMode'] }}>
-                    {blendBMode === 'Dazzle'
-                      ? blendDazzleShapes.map((s, i) => <polygon key={i} points={s.pts.map(([x, y]) => `${x},${y}`).join(' ')} fill={s.fill} />)
-                      : blendRects.map((r, i) => <rect key={i} x={r.x} y={r.y} width={r.w} height={r.h} fill={r.fill} />)
-                    }
-                  </g>
-                </>
-              : mode === 'Aerial'
-              ? (() => {
-                  // Base tile / zone pattern
-                  const shadowDir = (sunAngle + 180) % 360;
-                  const sdRad = (shadowDir * Math.PI) / 180;
-                  const sx = Math.sin(sdRad);   // +ve = east/right
-                  const sy = -Math.cos(sdRad);  // +ve = south/down (SVG)
-                  const elevRad = (sunElevation * Math.PI) / 180;
-                  const lf = 1 / Math.tan(elevRad);
-                  const sw = Math.max(4, Math.round(canvasBox.w * 0.04 * lf));
-                  const opacity = (shadowDepth / 100) * 0.72;
-                  const { w, h } = canvasBox;
-                  return (
-                    <>
-                      <g>
-                        {aerialRects.map((r, i) =>
-                          <rect key={i} x={r.x} y={r.y} width={r.w} height={r.h} fill={r.fill} />
-                        )}
-                      </g>
-                      {/* Parapet / edge shadow strips */}
-                      <g>
-                        {sy < -0.2 && <rect x={0} y={0} width={w} height={sw} fill="#1e1c14" opacity={opacity} />}
-                        {sy > 0.2  && <rect x={0} y={h - sw} width={w} height={sw} fill="#1e1c14" opacity={opacity} />}
-                        {sx < -0.2 && <rect x={0} y={0} width={sw} height={h} fill="#1e1c14" opacity={opacity} />}
-                        {sx > 0.2  && <rect x={w - sw} y={0} width={sw} height={h} fill="#1e1c14" opacity={opacity} />}
-                      </g>
-                    </>
-                  );
-                })()
-              : <>
-                  {rects.map((r, i) => (
-                    <rect key={i} x={r.x} y={r.y} width={r.w} height={r.h} fill={r.fill} />
-                  ))}
-                  {microRects && microRects.length > 0 && (
-                    <g opacity={(microWeight ?? 35) / 100} style={{ mixBlendMode: 'multiply' }}>
-                      {microRects.map((r, i) => (
-                        <rect key={`u${i}`} x={r.x} y={r.y} width={r.w} height={r.h} fill={r.fill} />
-                      ))}
+          {tileState === 'preview' ? (
+            <TilePreview
+              rects={rects}
+              microRects={microRects}
+              microWeight={microWeight}
+              canvasBox={canvasBox}
+              textureOverlay={textureOverlay}
+            />
+          ) : (
+            <svg
+              className="camo-svg"
+              viewBox={`0 0 ${canvasBox.w} ${canvasBox.h}`}
+              width="100%" height="100%"
+              preserveAspectRatio="xMidYMid slice"
+              shapeRendering="crispEdges"
+            >
+              {mode === 'Dazzle'
+                ? dazzleShapes.map((s, i) => (
+                    <polygon key={i} points={s.pts.map(([x, y]) => `${x},${y}`).join(' ')} fill={s.fill} />
+                  ))
+                : mode === 'Blend'
+                ? <>
+                    <g>{rects.map((r, i) => <rect key={i} x={r.x} y={r.y} width={r.w} height={r.h} fill={r.fill} />)}</g>
+                    <g opacity={blendOpacity / 100}
+                       style={{ mixBlendMode: blendType.toLowerCase() as React.CSSProperties['mixBlendMode'] }}>
+                      {blendBMode === 'Dazzle'
+                        ? blendDazzleShapes.map((s, i) => <polygon key={i} points={s.pts.map(([x, y]) => `${x},${y}`).join(' ')} fill={s.fill} />)
+                        : blendRects.map((r, i) => <rect key={i} x={r.x} y={r.y} width={r.w} height={r.h} fill={r.fill} />)
+                      }
                     </g>
-                  )}
-                </>
-            }
-            {textureOverlay}
-            {tile && (
-              <rect x={1} y={1} width={canvasBox.w - 2} height={canvasBox.h - 2}
-                fill="none" stroke="rgba(196,105,28,0.5)" strokeWidth={2} strokeDasharray="10 7" />
-            )}
-          </svg>
+                  </>
+                : mode === 'Aerial'
+                ? (() => {
+                    // Base tile / zone pattern
+                    const shadowDir = (sunAngle + 180) % 360;
+                    const sdRad = (shadowDir * Math.PI) / 180;
+                    const sx = Math.sin(sdRad);   // +ve = east/right
+                    const sy = -Math.cos(sdRad);  // +ve = south/down (SVG)
+                    const elevRad = (sunElevation * Math.PI) / 180;
+                    const lf = 1 / Math.tan(elevRad);
+                    const sw = Math.max(4, Math.round(canvasBox.w * 0.04 * lf));
+                    const opacity = (shadowDepth / 100) * 0.72;
+                    const { w, h } = canvasBox;
+                    return (
+                      <>
+                        <g>
+                          {aerialRects.map((r, i) =>
+                            <rect key={i} x={r.x} y={r.y} width={r.w} height={r.h} fill={r.fill} />
+                          )}
+                        </g>
+                        {/* Parapet / edge shadow strips */}
+                        <g>
+                          {sy < -0.2 && <rect x={0} y={0} width={w} height={sw} fill="#1e1c14" opacity={opacity} />}
+                          {sy > 0.2  && <rect x={0} y={h - sw} width={w} height={sw} fill="#1e1c14" opacity={opacity} />}
+                          {sx < -0.2 && <rect x={0} y={0} width={sw} height={h} fill="#1e1c14" opacity={opacity} />}
+                          {sx > 0.2  && <rect x={w - sw} y={0} width={sw} height={h} fill="#1e1c14" opacity={opacity} />}
+                        </g>
+                      </>
+                    );
+                  })()
+                : <>
+                    {rects.map((r, i) => (
+                      <rect key={i} x={r.x} y={r.y} width={r.w} height={r.h} fill={r.fill} />
+                    ))}
+                    {microRects && microRects.length > 0 && (
+                      <g opacity={(microWeight ?? 35) / 100} style={{ mixBlendMode: 'multiply' }}>
+                        {microRects.map((r, i) => (
+                          <rect key={`u${i}`} x={r.x} y={r.y} width={r.w} height={r.h} fill={r.fill} />
+                        ))}
+                      </g>
+                    )}
+                  </>
+              }
+              {textureOverlay}
+              {tileState === 'guides' && (
+                <rect x={1} y={1} width={canvasBox.w - 2} height={canvasBox.h - 2}
+                  fill="none" stroke="rgba(196,105,28,0.5)" strokeWidth={2} strokeDasharray="10 7" />
+              )}
+            </svg>
+          )}
         </div>
 
         <div className="zoom-controls" onClick={(e) => e.stopPropagation()}>

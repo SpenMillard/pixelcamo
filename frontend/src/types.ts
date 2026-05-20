@@ -5,6 +5,7 @@ export type HarmonyType = 'Complementary' | 'Analogous' | 'Triadic' | 'Split-com
 export type ExportFormat = 'PNG' | 'PDF';
 export type Passes = 1 | 2 | 3;
 export type RoofType = 'pitched' | 'flat';
+export type TileState = 'off' | 'guides' | 'preview';
 
 export interface TextureParams {
   opacity: number;

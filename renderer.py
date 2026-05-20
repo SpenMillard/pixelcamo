@@ -751,6 +751,27 @@ def _dark_biased_palette(palette: list[str]) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Seam verification
+# ---------------------------------------------------------------------------
+
+def verify_seamless(img: Image.Image, tolerance: int = 8) -> bool:
+    """
+    Check that left col matches right col and top row matches bottom row.
+    Returns True if seamless within per-channel pixel difference tolerance.
+    """
+    arr = np.array(img)
+    left_col  = arr[:, 0, :]
+    right_col = arr[:, -1, :]
+    top_row   = arr[0, :, :]
+    bottom_row = arr[-1, :, :]
+
+    h_diff = np.abs(left_col.astype(int) - right_col.astype(int)).max()
+    v_diff = np.abs(top_row.astype(int) - bottom_row.astype(int)).max()
+
+    return bool(h_diff <= tolerance and v_diff <= tolerance)
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 

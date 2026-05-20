@@ -10,7 +10,7 @@ import {
 } from './data/constants';
 import type {
   Mode, TextureType, BlendType, HarmonyType, TextureParams,
-  SectionOpen, Passes, ExportFormat, PcmDocument, RoofType,
+  SectionOpen, Passes, ExportFormat, PcmDocument, RoofType, TileState,
 } from './types';
 
 // Re-export for convenience
@@ -32,7 +32,7 @@ export default function App({ isDevWrapper }: AppProps) {
   const [pixelScale, setPixelScale] = useState(14);
   const [density, setDensity] = useState(58);
   const [passes, setPasses] = useState<Passes>(2);
-  const [tile, setTile] = useState(true);
+  const [tileState, setTileState] = useState<TileState>('guides');
   const [zoom, setZoom] = useState(100);
 
   const [blendOpacity, setBlendOpacity] = useState(72);
@@ -97,11 +97,11 @@ export default function App({ isDevWrapper }: AppProps) {
     const t0 = performance.now();
     const result = generateCamo({
       width: canvasBox.w, height: canvasBox.h,
-      palette, pixelScale, density, passes, seed, tile, locked,
+      palette, pixelScale, density, passes, seed, tile: tileState !== 'off', locked,
     });
     genMsRef.current = Math.round(performance.now() - t0);
     return result;
-  }, [mode, canvasBox.w, canvasBox.h, palette, pixelScale, density, passes, seed, tile, locked]);
+  }, [mode, canvasBox.w, canvasBox.h, palette, pixelScale, density, passes, seed, tileState, locked]);
 
   // safeMicroScale: always less than pixelScale
   const safeMicroScale = Math.min(microScale, Math.max(2, pixelScale - 2));
@@ -111,14 +111,14 @@ export default function App({ isDevWrapper }: AppProps) {
     const t0 = performance.now();
     const result = generateCamoWithMicro({
       width: canvasBox.w, height: canvasBox.h,
-      palette, pixelScale, density, passes, seed, tile, locked,
+      palette, pixelScale, density, passes, seed, tile: tileState !== 'off', locked,
       microScale: safeMicroScale,
       microWeight,
     });
     genMsRef.current = Math.round(performance.now() - t0);
     return result;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [microEnabled, mode, canvasBox.w, canvasBox.h, palette, pixelScale, density, passes, seed, tile, locked, safeMicroScale, microWeight]);
+  }, [microEnabled, mode, canvasBox.w, canvasBox.h, palette, pixelScale, density, passes, seed, tileState, locked, safeMicroScale, microWeight]);
 
   const rects = useMemo(() => {
     if (!camoResult) return [];
@@ -144,9 +144,9 @@ export default function App({ isDevWrapper }: AppProps) {
     return generateCamo({
       width: canvasBox.w, height: canvasBox.h,
       palette, pixelScale: blendBPixelScale, density: blendBDensity,
-      passes: blendBPasses, seed: blendBSeed, tile,
+      passes: blendBPasses, seed: blendBSeed, tile: tileState !== 'off',
     });
-  }, [mode, blendBMode, canvasBox.w, canvasBox.h, palette, blendBPixelScale, blendBDensity, blendBPasses, blendBSeed, tile]);
+  }, [mode, blendBMode, canvasBox.w, canvasBox.h, palette, blendBPixelScale, blendBDensity, blendBPasses, blendBSeed, tileState]);
 
   const blendRects = useMemo(() => {
     if (!blendCamoResult) return [];
@@ -354,11 +354,11 @@ export default function App({ isDevWrapper }: AppProps) {
       square: tex.square, direction: tex.direction, waviness: tex.waviness, weight: tex.weight,
     },
     harmony: { base: harmonyBase, type: harmonyType },
-    tile,
-  }), [mode, preset, paletteName, palette, locked, pixelScale, density, passes, seed, microEnabled, safeMicroScale, microWeight,
+    tile: tileState !== 'off',
+  }), [mode, preset, paletteName, palette, locked, pixelScale, density, passes, seed, microEnabled, safeMicroScale, microWeight, tileState,
       blendOpacity, blendType, blendBMode, blendBPixelScale, blendBDensity, blendBPasses,
       roofType, sunAngle, sunElevation, shadowDepth, weathering, zoneCount,
-      textureType, tex, harmonyBase, harmonyType, tile]);
+      textureType, tex, harmonyBase, harmonyType]);
 
   // ── Load doc ─────────────────────────────────────────────────
   const loadDoc = useCallback((doc: PcmDocument) => {
@@ -406,7 +406,7 @@ export default function App({ isDevWrapper }: AppProps) {
     });
     setHarmonyBase(doc.harmony.base);
     setHarmonyType(doc.harmony.type as HarmonyType);
-    setTile(doc.tile);
+    setTileState(doc.tile ? 'guides' : 'off');
     setDirty(false);
   }, []);
 
@@ -470,6 +470,37 @@ export default function App({ isDevWrapper }: AppProps) {
     setStatus('Idle');
   }, [buildDoc, exportW, exportH, dpi, format]);
 
+  const handleTileableExport = useCallback(async () => {
+    if (tileState === 'off') {
+      setStatus('Enable Tile to export a tileable pattern');
+      setTimeout(() => setStatus('Idle'), 3000);
+      return;
+    }
+    setStatus('Rendering…');
+    let result = '';
+    try {
+      const doc = buildDoc();
+      result = await getApi().export_pattern(
+        { ...doc, tile: true },
+        { width: exportW, height: exportH, dpi, format: 'PNG', tileable_suffix: true },
+      ) as string;
+    } catch {
+      setStatus('Error');
+      return;
+    }
+    if (!result) {
+      setStatus('Idle');
+      return;
+    }
+    if (result.includes('::seam_warning')) {
+      setStatus('⚠ Tile exported with seam warning — check edges before use');
+    } else {
+      const filename = result.split('/').pop() ?? result;
+      setStatus(`✓ Tile exported — ${filename} · ${exportW}×${exportH}px · seamless`);
+    }
+    setTimeout(() => setStatus('Idle'), 5000);
+  }, [buildDoc, exportW, exportH, dpi, tileState]);
+
   // ── Menu events from Python ──────────────────────────────────
   useEffect(() => {
     const handler = (e: CustomEvent) => {
@@ -479,6 +510,7 @@ export default function App({ isDevWrapper }: AppProps) {
         case 'save': handleSave(); break;
         case 'save-as': handleSaveAs(); break;
         case 'export': handleExport(); break;
+        case 'export-tile': handleTileableExport(); break;
         case 'reset-preset': loadPreset(preset); break;
         case 'copy-seed': navigator.clipboard?.writeText(String(seed)); break;
         case 'paste-seed':
@@ -487,7 +519,7 @@ export default function App({ isDevWrapper }: AppProps) {
             if (!isNaN(n)) setSeed(n);
           });
           break;
-        case 'toggle-tile': setTile((t) => !t); break;
+        case 'toggle-tile': setTileState(s => s === 'off' ? 'guides' : s === 'guides' ? 'preview' : 'off'); break;
         case 'toggle-harmony': toggle('harmony'); break;
         case 'zoom-in': setZoom((z) => Math.min(200, z + 25)); break;
         case 'zoom-out': setZoom((z) => Math.max(25, z - 25)); break;
@@ -502,7 +534,7 @@ export default function App({ isDevWrapper }: AppProps) {
     };
     window.addEventListener('pixelcamo:menu', handler as EventListener);
     return () => window.removeEventListener('pixelcamo:menu', handler as EventListener);
-  }, [handleNew, handleOpen, handleSave, handleSaveAs, handleExport, loadPreset, preset, seed, toggle, regenerateNewSeed, setSeed, setZoom]);
+  }, [handleNew, handleOpen, handleSave, handleSaveAs, handleExport, handleTileableExport, loadPreset, preset, seed, toggle, regenerateNewSeed, setSeed, setZoom]);
 
   // ── Keyboard shortcuts ───────────────────────────────────────
   useEffect(() => {
@@ -510,8 +542,9 @@ export default function App({ isDevWrapper }: AppProps) {
       const cmd = e.metaKey || e.ctrlKey;
       if (e.target instanceof HTMLInputElement) return;
       if (cmd && e.key === 'r') { e.preventDefault(); regenerateNewSeed(); }
+      else if (cmd && e.shiftKey && e.key.toLowerCase() === 'e') { e.preventDefault(); handleTileableExport(); }
       else if (cmd && e.key === 'e') { e.preventDefault(); handleExport(); }
-      else if (cmd && e.key === 't') { e.preventDefault(); setTile((t) => !t); }
+      else if (cmd && e.key === 't') { e.preventDefault(); setTileState(s => s === 'off' ? 'guides' : s === 'guides' ? 'preview' : 'off'); }
       else if (cmd && e.key === '1') { e.preventDefault(); setMode('Camo'); }
       else if (cmd && e.key === '2') { e.preventDefault(); setMode('Dazzle'); }
       else if (cmd && e.key === '3') { e.preventDefault(); setMode('Blend'); }
@@ -525,7 +558,7 @@ export default function App({ isDevWrapper }: AppProps) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [regenerateNewSeed, handleExport, mode, variationsOpen]);
+  }, [regenerateNewSeed, handleExport, handleTileableExport, mode, variationsOpen]);
 
   // ── Aerial: switch export size defaults when entering/leaving ─
   useEffect(() => {
@@ -613,7 +646,7 @@ export default function App({ isDevWrapper }: AppProps) {
           variationsOpen={variationsOpen}
           onToggleVariations={() => setVariationsOpen(v => !v)}
           onCommitVariation={commitVariation}
-          tile={tile} setTile={setTile}
+          tileState={tileState} setTileState={setTileState}
           zoom={zoom} setZoom={setZoom}
           rects={microResult ? microResult.macroRects : rects}
           microRects={microResult?.microRects}
@@ -638,6 +671,7 @@ export default function App({ isDevWrapper }: AppProps) {
           presetModified={presetModified}
           onRegenerateNewSeed={regenerateNewSeed}
           onExport={handleExport}
+          onTileableExport={handleTileableExport}
           onBoxChange={handleBoxChange}
         />
       </div>
