@@ -124,6 +124,48 @@ export function camoToRects({ grid, cell, cols, rows, palette }: CamoResult & { 
   return rects;
 }
 
+// ── Two-scale helpers ─────────────────────────────────────────
+
+function hexLumTS(hex: string): number {
+  const h = hex.replace('#', '');
+  return parseInt(h.slice(0, 2), 16) + parseInt(h.slice(2, 4), 16) + parseInt(h.slice(4, 6), 16);
+}
+
+export function buildDarkBiasedPalette(palette: string[]): string[] {
+  const sorted = [...palette].sort((a, b) => hexLumTS(a) - hexLumTS(b)); // darkest first
+  return [sorted[0], sorted[0], sorted[0], ...sorted.slice(1)];
+}
+
+export interface MicroLayerResult {
+  macroRects: CamoRect[];
+  microRects: CamoRect[];
+  microWeight: number;
+}
+
+export function generateCamoWithMicro(opts: CamoOpts & {
+  microScale: number;
+  microWeight: number;
+}): MicroLayerResult {
+  const { microScale, microWeight, seed, palette, locked } = opts;
+
+  const macro = generateCamo(opts);
+  const macroRects = camoToRects({ ...macro, palette });
+
+  const microSeed = ((seed ^ 0xDEADBEEF) >>> 0);
+  const micro = generateCamo({
+    ...opts,
+    pixelScale: Math.max(2, microScale),
+    seed: microSeed,
+    passes: Math.min(opts.passes, 2),
+    locked, // same lock constraints
+  });
+
+  const microPalette = buildDarkBiasedPalette(palette);
+  const microRects = camoToRects({ ...micro, palette: microPalette });
+
+  return { macroRects, microRects, microWeight };
+}
+
 // ── Aerial mode ───────────────────────────────────────────────
 
 /** Add delta (−255…+255) to each RGB channel — fast brightness tweak for tile variation. */

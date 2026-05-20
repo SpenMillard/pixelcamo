@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { CanvasPane } from './components/CanvasPane';
 import { Statusline } from './components/Statusline';
-import { generateCamo, camoToRects, generateDazzle, generateAerial } from './lib/camo';
+import { generateCamo, camoToRects, generateDazzle, generateAerial, generateCamoWithMicro } from './lib/camo';
 import { getApi } from './lib/api';
 import {
   PALETTES, PRESETS_DATA, DEFAULT_TEXTURE, SIZE_PRESETS,
@@ -41,6 +41,11 @@ export default function App({ isDevWrapper }: AppProps) {
   const [blendBPixelScale, setBlendBPixelScale] = useState(7);
   const [blendBDensity, setBlendBDensity] = useState(78);
   const [blendBPasses, setBlendBPasses] = useState<Passes>(2);
+
+  // ── Two-scale micro state ────────────────────────────────────
+  const [microEnabled, setMicroEnabled] = useState(false);
+  const [microScale, setMicroScale] = useState(6);
+  const [microWeight, setMicroWeight] = useState(35);
 
   // ── Aerial state ─────────────────────────────────────────────
   const [roofType, setRoofType] = useState<RoofType>('flat');
@@ -92,11 +97,28 @@ export default function App({ isDevWrapper }: AppProps) {
     const t0 = performance.now();
     const result = generateCamo({
       width: canvasBox.w, height: canvasBox.h,
-      palette, pixelScale, density, passes, seed, tile,
+      palette, pixelScale, density, passes, seed, tile, locked,
     });
     genMsRef.current = Math.round(performance.now() - t0);
     return result;
-  }, [mode, canvasBox.w, canvasBox.h, palette, pixelScale, density, passes, seed, tile]);
+  }, [mode, canvasBox.w, canvasBox.h, palette, pixelScale, density, passes, seed, tile, locked]);
+
+  // safeMicroScale: always less than pixelScale
+  const safeMicroScale = Math.min(microScale, Math.max(2, pixelScale - 2));
+
+  const microResult = useMemo(() => {
+    if (!microEnabled || (mode !== 'Camo' && mode !== 'Blend')) return null;
+    const t0 = performance.now();
+    const result = generateCamoWithMicro({
+      width: canvasBox.w, height: canvasBox.h,
+      palette, pixelScale, density, passes, seed, tile, locked,
+      microScale: safeMicroScale,
+      microWeight,
+    });
+    genMsRef.current = Math.round(performance.now() - t0);
+    return result;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [microEnabled, mode, canvasBox.w, canvasBox.h, palette, pixelScale, density, passes, seed, tile, locked, safeMicroScale, microWeight]);
 
   const rects = useMemo(() => {
     if (!camoResult) return [];
@@ -313,7 +335,7 @@ export default function App({ isDevWrapper }: AppProps) {
     paletteName,
     palette,
     locked,
-    params: { pixel_scale: pixelScale, density, passes, seed },
+    params: { pixel_scale: pixelScale, density, passes, seed, microEnabled, microScale: safeMicroScale, microWeight },
     blend: { opacity: blendOpacity, type: blendType.toLowerCase() },
     blendB: { mode: blendBMode.toLowerCase(), pixelScale: blendBPixelScale, density: blendBDensity, passes: blendBPasses },
     aerial: {
@@ -333,7 +355,7 @@ export default function App({ isDevWrapper }: AppProps) {
     },
     harmony: { base: harmonyBase, type: harmonyType },
     tile,
-  }), [mode, preset, paletteName, palette, locked, pixelScale, density, passes, seed,
+  }), [mode, preset, paletteName, palette, locked, pixelScale, density, passes, seed, microEnabled, safeMicroScale, microWeight,
       blendOpacity, blendType, blendBMode, blendBPixelScale, blendBDensity, blendBPasses,
       roofType, sunAngle, sunElevation, shadowDepth, weathering, zoneCount,
       textureType, tex, harmonyBase, harmonyType, tile]);
@@ -351,6 +373,9 @@ export default function App({ isDevWrapper }: AppProps) {
     setDensity(doc.params.density);
     setPasses(doc.params.passes as Passes);
     setSeed(doc.params.seed);
+    setMicroEnabled(doc.params.microEnabled ?? false);
+    setMicroScale(doc.params.microScale ?? 6);
+    setMicroWeight(doc.params.microWeight ?? 35);
     setBlendOpacity(doc.blend.opacity);
     setBlendType(cap(doc.blend.type) as BlendType);
     const bb = doc.blendB;
@@ -549,6 +574,10 @@ export default function App({ isDevWrapper }: AppProps) {
           harmonyType={harmonyType} setHarmonyType={setHarmonyType}
           locked={locked}
           onToggleLock={handleToggleLock}
+          microEnabled={microEnabled} setMicroEnabled={setMicroEnabled}
+          microScale={microScale} setMicroScale={setMicroScale}
+          microWeight={microWeight} setMicroWeight={setMicroWeight}
+          safeMicroScale={safeMicroScale}
           open={open} toggle={toggle}
           onApplyHarmony={handleApplyHarmony}
           presetModified={presetModified}
@@ -586,7 +615,9 @@ export default function App({ isDevWrapper }: AppProps) {
           onCommitVariation={commitVariation}
           tile={tile} setTile={setTile}
           zoom={zoom} setZoom={setZoom}
-          rects={rects}
+          rects={microResult ? microResult.macroRects : rects}
+          microRects={microResult?.microRects}
+          microWeight={microResult?.microWeight}
           blendRects={blendRects}
           blendDazzleShapes={blendDazzleShapes}
           blendBMode={blendBMode}

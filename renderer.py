@@ -741,6 +741,15 @@ def _apply_shadow_layer(
     return result.convert('RGB')
 
 
+def _dark_biased_palette(palette: list[str]) -> list[str]:
+    """Return palette sorted darkest-first with darkest colour repeated 3× (mirrors TS buildDarkBiasedPalette)."""
+    def _lum(h: str) -> float:
+        r, g, b = _hex_to_rgb(h)
+        return 0.299 * r + 0.587 * g + 0.114 * b
+    sorted_p = sorted(palette, key=_lum)
+    return [sorted_p[0], sorted_p[0], sorted_p[0]] + sorted_p[1:]
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -852,6 +861,30 @@ def render_pattern(doc: dict, opts: dict) -> Image.Image:
 
     else:
         img = _render_camo(width, height, palette, pixel_scale, density, passes, seed, tile, locked)
+
+    # ── Micro disruptor (Camo / Blend modes only) ───────────────────────────
+    micro_enabled = params.get('microEnabled', False)
+    if micro_enabled and mode in ('camo', 'blend'):
+        micro_scale = max(2, min(int(params.get('microScale', 6)), max(2, pixel_scale - 2)))
+        micro_weight = int(params.get('microWeight', 35)) / 100.0
+        micro_seed = (seed ^ 0xDEADBEEF) & 0xFFFFFFFF
+        micro_img = _render_camo(
+            width, height,
+            _dark_biased_palette(palette),
+            micro_scale, density, min(passes, 2), micro_seed, tile, locked,
+        )
+        # Multiply composite at micro_weight opacity
+        macro_arr = np.array(img.convert('RGB')).astype(np.float32) / 255.0
+        micro_arr = np.array(micro_img).astype(np.float32) / 255.0
+        try:
+            import blend_modes as bm
+            macro_f32 = np.dstack([macro_arr, np.ones(macro_arr.shape[:2], dtype=np.float32)])
+            micro_f32 = np.dstack([micro_arr, np.ones(micro_arr.shape[:2], dtype=np.float32) * micro_weight])
+            blended = bm.multiply(macro_f32, micro_f32, micro_weight)[:, :, :3]
+        except Exception:
+            # Simple fallback: macro * (1 - w) + macro*micro * w = multiply composite
+            blended = macro_arr * (1 - micro_weight) + (macro_arr * micro_arr) * micro_weight
+        img = Image.fromarray((np.clip(blended, 0, 1) * 255).astype(np.uint8))
 
     # Apply texture overlay
     tex = doc.get('texture', {})

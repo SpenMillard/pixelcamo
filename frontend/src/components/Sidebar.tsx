@@ -47,6 +47,10 @@ interface SidebarProps {
   open: SectionOpen; toggle: (k: keyof SectionOpen) => void;
   locked: boolean[];
   onToggleLock: (i: number) => void;
+  microEnabled: boolean; setMicroEnabled: (v: boolean) => void;
+  microScale: number; setMicroScale: (v: number) => void;
+  microWeight: number; setMicroWeight: (v: number) => void;
+  safeMicroScale: number;
   onApplyHarmony: () => void;
   presetModified: boolean;
   loadPreset: (name: string) => void;
@@ -78,6 +82,7 @@ export function Sidebar(props: SidebarProps) {
     textureType, setTextureType, tex, setT,
     harmonyBase, setHarmonyBase, harmonyType, setHarmonyType,
     locked, onToggleLock,
+    microEnabled, setMicroEnabled, microScale, setMicroScale, microWeight, setMicroWeight, safeMicroScale,
     open, toggle, onApplyHarmony, presetModified, loadPreset, onRandomisePalette,
     onAddSwatch, onRemoveSwatch,
     onSavePalette, onLoadPalette,
@@ -268,7 +273,11 @@ export function Sidebar(props: SidebarProps) {
         </Section>
 
         {/* ── PARAMETERS ──────────────────────────────── */}
-        <Section title="Parameters" badge={`${pixelScale}px · ${density}%`}
+        <Section
+          title="Parameters"
+          badge={microEnabled && (mode === 'Camo' || mode === 'Blend')
+            ? `${pixelScale}+${safeMicroScale}px · ${density}%`
+            : `${pixelScale}px · ${density}%`}
           open={open.params} onToggle={() => toggle('params')}>
           <LabelSlider label={psLabel} min={psMin} max={psMax} step={1}
             value={pixelScale} onChange={setPixelScale} suffix="px" labelWidth={84} />
@@ -285,6 +294,36 @@ export function Sidebar(props: SidebarProps) {
               {passes === 1 ? 'fast' : passes === 2 ? 'std' : 'rich'}
             </span>
           </div>
+          {/* ── Two-scale (Camo / Blend only) ──────── */}
+          {(mode === 'Camo' || mode === 'Blend') && (<>
+            <div className="row">
+              <span className="label wide">Two-scale</span>
+              <div className={`toggle ${microEnabled ? 'on' : ''}`}
+                   onClick={() => setMicroEnabled(!microEnabled)} />
+              <span className="value-right" style={{ color: 'var(--fg-2)' }}>
+                {microEnabled ? 'ON' : 'OFF'}
+              </span>
+            </div>
+            {microEnabled && (
+              <div className="conditional reveal">
+                <div className="cond-head">
+                  <span className="name">Micro disruptor</span>
+                  <span className="value mono" style={{ fontSize: 9.5, color: 'var(--fg-3)' }}>
+                    2-scale
+                  </span>
+                </div>
+                <LabelSlider label="Micro scale" min={2} max={20} step={1}
+                  value={microScale} onChange={setMicroScale} suffix="px" labelWidth={84} />
+                <LabelSlider label="Micro weight" min={0} max={100} step={1}
+                  value={microWeight} onChange={setMicroWeight} suffix="%" labelWidth={84} />
+                {safeMicroScale >= pixelScale - 2 && (
+                  <span style={{ color: 'var(--warn)', fontSize: 9.5, padding: '2px 0', display: 'block' }}>
+                    micro scale close to macro — increase pixel scale for best results
+                  </span>
+                )}
+              </div>
+            )}
+          </>)}
         </Section>
 
         {/* ── TEXTURE ─────────────────────────────────── */}

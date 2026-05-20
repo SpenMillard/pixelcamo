@@ -34,6 +34,8 @@ interface CanvasPaneProps {
   exportH: number;
   pixelScale: number;
   density: number;
+  microRects?: CamoRect[];
+  microWeight?: number;
   presetModified: boolean;
   locked?: boolean[];
   variationsOpen: boolean;
@@ -49,6 +51,7 @@ export function CanvasPane({
   rects, blendRects, blendDazzleShapes, blendBMode, blendOpacity, blendType,
   dazzleShapes, aerialRects, sunAngle, sunElevation, shadowDepth,
   textureType, tex, palette, locked, pixelScale, density,
+  microRects, microWeight,
   dpi, exportSize, exportW, exportH, presetModified,
   variationsOpen, onToggleVariations, onCommitVariation,
   onRegenerateNewSeed, onExport, onBoxChange,
@@ -370,9 +373,18 @@ export function CanvasPane({
                     </>
                   );
                 })()
-              : rects.map((r, i) => (
-                  <rect key={i} x={r.x} y={r.y} width={r.w} height={r.h} fill={r.fill} />
-                ))
+              : <>
+                  {rects.map((r, i) => (
+                    <rect key={i} x={r.x} y={r.y} width={r.w} height={r.h} fill={r.fill} />
+                  ))}
+                  {microRects && microRects.length > 0 && (
+                    <g opacity={(microWeight ?? 35) / 100} style={{ mixBlendMode: 'multiply' }}>
+                      {microRects.map((r, i) => (
+                        <rect key={`u${i}`} x={r.x} y={r.y} width={r.w} height={r.h} fill={r.fill} />
+                      ))}
+                    </g>
+                  )}
+                </>
             }
             {textureOverlay}
             {tile && (

@@ -49,6 +49,9 @@ export interface PcmDocument {
     density: number;
     passes: number;
     seed: number;
+    microEnabled?: boolean;
+    microScale?: number;
+    microWeight?: number;
   };
   blend: { opacity: number; type: string };
   blendB?: { mode: string; pixelScale: number; density: number; passes: number };
