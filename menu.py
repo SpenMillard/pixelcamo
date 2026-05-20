@@ -24,29 +24,6 @@ from AppKit import (
 import webview
 
 
-# ---------------------------------------------------------------------------
-# Helper to build a menu item
-# ---------------------------------------------------------------------------
-
-def _item(
-    title: str,
-    action_name: str | None,
-    key: str = '',
-    mods: int = NSEventModifierFlagCommand,
-    target=None,
-) -> NSMenuItem:
-    item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-        title,
-        objc.selector(None, selector=action_name.encode() if action_name else b'',
-                      isRequired=False) if action_name else None,
-        key,
-    )
-    item.setKeyEquivalentModifierMask_(mods)
-    if target is not None:
-        item.setTarget_(target)
-    return item
-
-
 def _separator() -> NSMenuItem:
     return NSMenuItem.separatorItem()
 
@@ -169,7 +146,8 @@ OPT = NSEventModifierFlagOption
 
 
 def _make_item(delegate, title: str, selector: str, key: str, mods: int) -> NSMenuItem:
-    item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, selector, key)
+    sel = objc.selector(None, selector=selector.encode(), isRequired=False)
+    item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, sel, key)
     item.setKeyEquivalentModifierMask_(mods)
     item.setTarget_(delegate)
     return item
