@@ -11,7 +11,7 @@ import {
   PALETTES, SIZE_PRESETS, STANDARD_SIZE_PRESET_NAMES, AERIAL_SIZE_PRESET_NAMES,
 } from '../data/constants';
 import type {
-  Mode, TextureType, BlendType, HarmonyType, TextureParams, SectionOpen, Passes, ExportFormat, RoofType,
+  Mode, TextureType, BlendType, HarmonyType, TextureParams, SectionOpen, Passes, ExportFormat, RoofType, DazzleFill,
 } from '../types';
 
 interface SidebarProps {
@@ -30,6 +30,11 @@ interface SidebarProps {
   blendBPixelScale: number; setBlendBPixelScale: (v: number) => void;
   blendBDensity: number; setBlendBDensity: (v: number) => void;
   blendBPasses: Passes; setBlendBPasses: (v: Passes) => void;
+  // Dazzle controls
+  dazzleRotation: number; setDazzleRotation: (v: number) => void;
+  dazzleAsymmetry: number; setDazzleAsymmetry: (v: number) => void;
+  dazzleFill: DazzleFill; setDazzleFill: (v: DazzleFill) => void;
+  dazzleShapeTypes: string[]; setDazzleShapeTypes: (v: string[] | ((prev: string[]) => string[])) => void;
   // Aerial
   roofType: RoofType; setRoofType: (v: RoofType) => void;
   sunAngle: number; setSunAngle: (v: number) => void;
@@ -76,6 +81,8 @@ export function Sidebar(props: SidebarProps) {
     passes, setPasses, blendOpacity, setBlendOpacity, blendType, setBlendType,
     blendBMode, setBlendBMode, blendBPixelScale, setBlendBPixelScale,
     blendBDensity, setBlendBDensity, blendBPasses, setBlendBPasses,
+    dazzleRotation, setDazzleRotation, dazzleAsymmetry, setDazzleAsymmetry,
+    dazzleFill, setDazzleFill, dazzleShapeTypes, setDazzleShapeTypes,
     roofType, setRoofType, sunAngle, setSunAngle, sunElevation, setSunElevation,
     shadowDepth, setShadowDepth, weathering, setWeathering, zoneCount, setZoneCount,
     onAerialPaletteChange,
@@ -294,6 +301,51 @@ export function Sidebar(props: SidebarProps) {
               {passes === 1 ? 'fast' : passes === 2 ? 'std' : 'rich'}
             </span>
           </div>
+          {/* ── Dazzle controls ──────────────────── */}
+          {mode === 'Dazzle' && (
+            <div className="conditional reveal">
+              <div className="cond-head"><span className="name">Dazzle controls</span></div>
+              <LabelSlider label="Rotation" min={0} max={100} step={1}
+                value={dazzleRotation} onChange={setDazzleRotation} suffix="" labelWidth={84} />
+              <LabelSlider label="Asymmetry" min={0} max={100} step={1}
+                value={dazzleAsymmetry} onChange={setDazzleAsymmetry} suffix="" labelWidth={84} />
+              <div className="row">
+                <span className="label wide">Fill</span>
+                <div className="seg" style={{ flex: 1 }}>
+                  {(['dark', 'palette', 'contrast'] as DazzleFill[]).map((f) => (
+                    <button key={f} className={dazzleFill === f ? 'active' : ''}
+                      onClick={() => setDazzleFill(f)}
+                      style={{ textTransform: 'capitalize' }}>{f}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="row">
+                <span className="label wide">Shapes</span>
+                <div className="seg" style={{ flex: 1 }}>
+                  {[
+                    { key: 'triangle',      label: '△' },
+                    { key: 'parallelogram', label: '▱' },
+                    { key: 'wedge',         label: '◁' },
+                    { key: 'slash',         label: '╱' },
+                  ].map(({ key, label }) => (
+                    <button
+                      key={key}
+                      title={key}
+                      className={dazzleShapeTypes.includes(key) ? 'active' : ''}
+                      onClick={() => setDazzleShapeTypes(prev => {
+                        if (prev.includes(key)) {
+                          if (prev.length === 1) return prev;
+                          return prev.filter(s => s !== key);
+                        }
+                        return [...prev, key];
+                      })}
+                    >{label}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* ── Two-scale (Camo / Blend only) ──────── */}
           {(mode === 'Camo' || mode === 'Blend') && (<>
             <div className="row">

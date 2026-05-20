@@ -10,7 +10,7 @@ import {
 } from './data/constants';
 import type {
   Mode, TextureType, BlendType, HarmonyType, TextureParams,
-  SectionOpen, Passes, ExportFormat, PcmDocument, RoofType, TileState,
+  SectionOpen, Passes, ExportFormat, PcmDocument, RoofType, TileState, DazzleFill,
 } from './types';
 
 // Re-export for convenience
@@ -46,6 +46,12 @@ export default function App({ isDevWrapper }: AppProps) {
   const [microEnabled, setMicroEnabled] = useState(false);
   const [microScale, setMicroScale] = useState(6);
   const [microWeight, setMicroWeight] = useState(35);
+
+  // ── Dazzle controls ──────────────────────────────────────────
+  const [dazzleRotation, setDazzleRotation] = useState(72);
+  const [dazzleAsymmetry, setDazzleAsymmetry] = useState(0);
+  const [dazzleFill, setDazzleFill] = useState<DazzleFill>('dark');
+  const [dazzleShapeTypes, setDazzleShapeTypes] = useState<string[]>(['triangle', 'parallelogram', 'wedge', 'slash']);
 
   // ── Aerial state ─────────────────────────────────────────────
   const [roofType, setRoofType] = useState<RoofType>('flat');
@@ -131,10 +137,13 @@ export default function App({ isDevWrapper }: AppProps) {
     const result = generateDazzle({
       width: canvasBox.w, height: canvasBox.h,
       palette, pixelScale, density, passes, seed,
+      dazzleRotation, dazzleAsymmetry,
+      dazzleFill: dazzleFill as string,
+      dazzleShapeTypes,
     });
     genMsRef.current = Math.round(performance.now() - t0);
     return result;
-  }, [mode, canvasBox.w, canvasBox.h, palette, pixelScale, density, passes, seed]);
+  }, [mode, canvasBox.w, canvasBox.h, palette, pixelScale, density, passes, seed, dazzleRotation, dazzleAsymmetry, dazzleFill, dazzleShapeTypes]);
 
   // Blend mode — layer B (user-controlled settings, offset seed)
   const blendBSeed = useMemo(() => (seed ^ 0xA5A5A5A5) >>> 0, [seed]);
@@ -355,10 +364,17 @@ export default function App({ isDevWrapper }: AppProps) {
     },
     harmony: { base: harmonyBase, type: harmonyType },
     tile: tileState !== 'off',
+    dazzle: {
+      rotation: dazzleRotation,
+      asymmetry: dazzleAsymmetry,
+      fill: dazzleFill,
+      shapeTypes: dazzleShapeTypes,
+    },
   }), [mode, preset, paletteName, palette, locked, pixelScale, density, passes, seed, microEnabled, safeMicroScale, microWeight, tileState,
       blendOpacity, blendType, blendBMode, blendBPixelScale, blendBDensity, blendBPasses,
       roofType, sunAngle, sunElevation, shadowDepth, weathering, zoneCount,
-      textureType, tex, harmonyBase, harmonyType]);
+      textureType, tex, harmonyBase, harmonyType,
+      dazzleRotation, dazzleAsymmetry, dazzleFill, dazzleShapeTypes]);
 
   // ── Load doc ─────────────────────────────────────────────────
   const loadDoc = useCallback((doc: PcmDocument) => {
@@ -407,6 +423,11 @@ export default function App({ isDevWrapper }: AppProps) {
     setHarmonyBase(doc.harmony.base);
     setHarmonyType(doc.harmony.type as HarmonyType);
     setTileState(doc.tile ? 'guides' : 'off');
+    const dz = doc.dazzle;
+    setDazzleRotation(dz?.rotation ?? 72);
+    setDazzleAsymmetry(dz?.asymmetry ?? 0);
+    setDazzleFill((dz?.fill ?? 'dark') as DazzleFill);
+    setDazzleShapeTypes(dz?.shapeTypes ?? ['triangle', 'parallelogram', 'wedge', 'slash']);
     setDirty(false);
   }, []);
 
@@ -620,6 +641,10 @@ export default function App({ isDevWrapper }: AppProps) {
           onRemoveSwatch={handleRemoveSwatch}
           onSavePalette={handleSavePalette}
           onLoadPalette={handleLoadPalette}
+          dazzleRotation={dazzleRotation} setDazzleRotation={setDazzleRotation}
+          dazzleAsymmetry={dazzleAsymmetry} setDazzleAsymmetry={setDazzleAsymmetry}
+          dazzleFill={dazzleFill} setDazzleFill={setDazzleFill}
+          dazzleShapeTypes={dazzleShapeTypes} setDazzleShapeTypes={setDazzleShapeTypes}
           roofType={roofType} setRoofType={setRoofType}
           sunAngle={sunAngle} setSunAngle={setSunAngle}
           sunElevation={sunElevation} setSunElevation={setSunElevation}

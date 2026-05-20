@@ -212,13 +212,38 @@ def _render_dazzle(
     passes: int,
     seed: int,
     tile: bool,
+    dazzle_rotation: int = 72,
+    dazzle_asymmetry: int = 0,
+    dazzle_fill: str = 'dark',
+    dazzle_shape_types: list[str] | None = None,
 ) -> Image.Image:
+    active_shapes = dazzle_shape_types if dazzle_shape_types else list(SHAPES)
+    if not active_shapes:
+        active_shapes = list(SHAPES)
+
+    # Angle range: rotation=72 → max_angle≈130 (±65°), matches original default
+    max_angle = max(5.0, dazzle_rotation / 100.0 * 180.0)
+
+    # Asymmetry: 0 → random side (bias_chance=0.5), 100 → strongly one-sided
+    bias_chance = 0.5 + dazzle_asymmetry / 200.0  # 0.5–1.0
+
     rgbs = [_hex_to_rgb(c) for c in palette]
+    sorted_rgbs = sorted(rgbs, key=_luminance)
+    darkest = sorted_rgbs[0]
+    lightest = sorted_rgbs[-1]
+
     base_colour = max(rgbs, key=_luminance)
     dark_colours = [c for c in rgbs if _luminance(c) < _luminance(base_colour)]
     if not dark_colours:
         dark_colours = [rgbs[0]]
-    light_colours = sorted(rgbs, key=_luminance, reverse=True)[:2]
+
+    # Fill colour pool for pass 1 shapes
+    if dazzle_fill == 'palette':
+        fill_colours = rgbs
+    elif dazzle_fill == 'contrast':
+        fill_colours = [darkest, lightest]
+    else:  # 'dark' — default
+        fill_colours = dark_colours
 
     rand = mulberry32(seed)
     img = Image.new('RGB', (width, height), base_colour)
@@ -233,30 +258,34 @@ def _render_dazzle(
     scale_mult = 0.2 + (pixel_scale - 4) / 36 * 4.8  # 0.2–5.0
     n_large = round(6 + (density / 100) * 4)  # 6–10
     for _ in range(n_large):
-        shape = SHAPES[int(rand() * len(SHAPES))]
+        shape = active_shapes[int(rand() * len(active_shapes))]
         size = (0.18 + rand() * 0.22) * cw * scale_mult
-        angle = (rand() - 0.5) * 130  # ±65°
-        bias = 1 if rand() < 0.5 else -1
+        angle = (rand() - 0.5) * max_angle * 2
+        bias = 1 if rand() > (1.0 - bias_chance) else -1
         cx = cx_canvas + bias * (0.05 + rand() * 0.30) * cw
         cy = (0.10 + rand() * 0.80) * ch
-        colour = dark_colours[int(rand() * len(dark_colours))]
+        colour = fill_colours[int(rand() * len(fill_colours))]
         _draw_shape_with_tiling(draw, cx, cy, shape, size, angle, colour, width, height, tile)
 
     if passes < 2:
         return img
 
     # ---- Pass 2: diagonal slash bars ----
+    slash_enabled = 'slash' in active_shapes
     n_slashes = round(4 + (density / 100) * 3)  # 4–7
     for _ in range(n_slashes):
         size = (0.15 + rand() * 0.20) * cw * scale_mult
-        # angle constrained to ±25°–55° (positive or negative)
-        base_angle = 25 + rand() * 30  # 25–55
-        angle = base_angle if rand() < 0.5 else -base_angle
+        # angle constrained: scaled from max_angle (default: ±25°–55°)
+        slash_range_lo = max(5.0, max_angle * 0.192)
+        slash_range_hi = max(5.0, max_angle * 0.231)
+        base_a = slash_range_lo + rand() * slash_range_hi
+        angle = base_a if rand() < 0.5 else -base_a
         cx = rand() * cw
-        cy = (0.25 + rand() * 0.50) * ch  # concentrated vertically
+        cy = (0.25 + rand() * 0.50) * ch
         colour_idx = int(rand() * min(2, len(rgbs)))
         colour = rgbs[colour_idx]
-        _draw_shape_with_tiling(draw, cx, cy, 'slash', size, angle, colour, width, height, tile)
+        if slash_enabled:
+            _draw_shape_with_tiling(draw, cx, cy, 'slash', size, angle, colour, width, height, tile)
 
     if passes < 3:
         return img
@@ -264,7 +293,7 @@ def _render_dazzle(
     # ---- Pass 3: medium geometric detail ----
     n_medium = round(10 + (density / 100) * 8)  # 10–18
     for _ in range(n_medium):
-        shape = SHAPES[int(rand() * len(SHAPES))]
+        shape = active_shapes[int(rand() * len(active_shapes))]
         size = (0.04 + rand() * 0.10) * cw * scale_mult
         angle = (rand() - 0.5) * 180
         cx = rand() * cw
@@ -276,9 +305,6 @@ def _render_dazzle(
     cell_size = max(1, round(3 * pixel_scale * 0.5))
     canvas_area = width * height
     n_noise = round(canvas_area * 0.012 * density / (cell_size * cell_size))
-    sorted_rgbs = sorted(rgbs, key=_luminance)
-    darkest = sorted_rgbs[0]
-    lightest = sorted_rgbs[-1]
     for i in range(n_noise):
         nx = int(rand() * (width - cell_size))
         ny = int(rand() * (height - cell_size))
@@ -796,7 +822,14 @@ def render_pattern(doc: dict, opts: dict) -> Image.Image:
     height = int(opts.get('height', 1080))
 
     if mode == 'dazzle':
-        img = _render_dazzle(width, height, palette, pixel_scale, density, passes, seed, tile)
+        dz = doc.get('dazzle', {})
+        img = _render_dazzle(
+            width, height, palette, pixel_scale, density, passes, seed, tile,
+            dazzle_rotation=int(dz.get('rotation', 72)),
+            dazzle_asymmetry=int(dz.get('asymmetry', 0)),
+            dazzle_fill=str(dz.get('fill', 'dark')),
+            dazzle_shape_types=dz.get('shapeTypes') or None,
+        )
     elif mode == 'blend':
         blend_cfg = doc.get('blend', {})
         opacity_frac = blend_cfg.get('opacity', 72) / 100.0
@@ -809,7 +842,7 @@ def render_pattern(doc: dict, opts: dict) -> Image.Image:
         b_seed = (seed ^ 0xA5A5A5A5) & 0xFFFFFFFF
         layer_a = _render_camo(width, height, palette, pixel_scale, density, passes, seed, tile, locked)
         if b_mode == 'dazzle':
-            layer_b = _render_dazzle(width, height, palette, b_pixel_scale, b_density, b_passes, b_seed, tile)
+            layer_b = _render_dazzle(width, height, palette, b_pixel_scale, b_density, b_passes, b_seed, tile)  # blend layer B uses default dazzle params
         else:
             layer_b = _render_camo(width, height, palette, b_pixel_scale, b_density, b_passes, b_seed, tile, locked)
         try:

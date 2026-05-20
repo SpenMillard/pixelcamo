@@ -3,6 +3,7 @@ export type TextureType = 'None' | 'Stipple' | 'Hatch' | 'Scratch' | 'Grain' | '
 export type BlendType = 'Normal' | 'Multiply' | 'Screen' | 'Overlay' | 'Soft-light' | 'Difference';
 export type HarmonyType = 'Complementary' | 'Analogous' | 'Triadic' | 'Split-comp' | 'Tetradic' | 'Mono';
 export type ExportFormat = 'PNG' | 'PDF';
+export type DazzleFill = 'dark' | 'palette' | 'contrast';
 export type Passes = 1 | 2 | 3;
 export type RoofType = 'pitched' | 'flat';
 export type TileState = 'off' | 'guides' | 'preview';
@@ -85,6 +86,12 @@ export interface PcmDocument {
   };
   harmony: { base: string; type: string };
   tile: boolean;
+  dazzle?: {
+    rotation: number;
+    asymmetry: number;
+    fill: string;
+    shapeTypes: string[];
+  };
   _path?: string;
 }
 

@@ -284,6 +284,13 @@ export function generateAerial(opts: AerialOpts): CamoRect[] {
   return generatePitchedPreview(width, height, palette, pixelScale, density, seed, paletteName);
 }
 
+export interface DazzleExtOpts {
+  dazzleRotation?: number;    // 0–100: shape angle range. 0=flat, 72=current(±65°), 100=±90°
+  dazzleAsymmetry?: number;   // 0–100: 0=random L/R (symmetric), 100=strongly one-sided
+  dazzleFill?: string;        // 'dark' | 'palette' | 'contrast'
+  dazzleShapeTypes?: string[]; // subset of ['triangle','parallelogram','wedge','slash']
+}
+
 // ── Dazzle mode (CV Dazzle) ────────────────────────────────────
 
 function rotatePoint(x: number, y: number, cx: number, cy: number, angleDeg: number): [number, number] {
@@ -321,49 +328,85 @@ function hexLum(hex: string): number {
 
 const SHAPES = ['triangle', 'parallelogram', 'wedge', 'slash'] as const;
 
-export function generateDazzle({ width, height, palette, pixelScale, density, passes, seed }: CamoOpts): DazzleShape[] {
+export function generateDazzle(opts: CamoOpts & DazzleExtOpts): DazzleShape[] {
+  const {
+    width, height, palette, pixelScale, density, passes, seed,
+    dazzleRotation = 72,
+    dazzleAsymmetry = 0,
+    dazzleFill = 'dark',
+    dazzleShapeTypes,
+  } = opts;
+
   const rand = mulberry32(seed);
   const shapes: DazzleShape[] = [];
 
-  // Determine base (lightest) and dark colours
-  const sorted = [...palette].sort((a, b) => hexLum(b) - hexLum(a));
+  // ── Resolve active shape types ─────────────────────────────
+  const ALL_SHAPES = ['triangle', 'parallelogram', 'wedge', 'slash'] as const;
+  const activeShapes: (typeof ALL_SHAPES[number])[] = (dazzleShapeTypes && dazzleShapeTypes.length > 0)
+    ? ALL_SHAPES.filter(s => dazzleShapeTypes.includes(s))
+    : [...ALL_SHAPES];
+  const safeShapes = activeShapes.length > 0 ? activeShapes : [...ALL_SHAPES];
+  const mainShapes = safeShapes.filter(s => s !== 'slash'); // pass 1 excludes slash
+  const hasSlash = safeShapes.includes('slash');
+
+  // ── Derived params ─────────────────────────────────────────
+  const maxAngle = Math.max(5, dazzleRotation / 100 * 180); // 0→5°  72→130°  100→180°
+  const biasChance = 0.5 + dazzleAsymmetry / 200;           // 0→50/50  100→all right
+
+  // ── Colour helpers ─────────────────────────────────────────
+  const sorted = [...palette].sort((a, b) => hexLum(b) - hexLum(a)); // lightest first
   const baseFill = sorted[0];
   const darkColours = sorted.slice(1).length > 0 ? sorted.slice(1) : [sorted[0]];
+  const contrastPair = [sorted[sorted.length - 1], sorted[0]]; // [darkest, lightest]
+
+  // pickColor always consumes exactly ONE rand() call regardless of mode
+  const pickColor = (passType: 'large' | 'slash' | 'detail'): string => {
+    const r = rand();
+    if (dazzleFill === 'palette') return palette[Math.floor(r * palette.length)];
+    if (dazzleFill === 'contrast') return contrastPair[Math.floor(r * 2)];
+    // 'dark' — default, matches original behaviour
+    if (passType === 'large') return darkColours[Math.floor(r * darkColours.length)];
+    if (passType === 'slash') return palette[Math.floor(r * Math.min(2, palette.length))];
+    return palette[Math.floor(r * palette.length)];
+  };
 
   const cx = width / 2;
-  const cy = height / 2;
-  const scaleMul = 0.2 + (pixelScale / 40) * 4.8; // 0.2–5.0
-  const densityMul = 0.5 + (density / 100) * 1.5;  // 0.5–2.0
+  const scaleMul = 0.2 + (pixelScale / 40) * 4.8;
+  const densityMul = 0.5 + (density / 100) * 1.5;
 
-  // Fill background with base colour (represented as first rect)
   shapes.push({ pts: [[0, 0], [width, 0], [width, height], [0, height]], fill: baseFill });
 
   // ── Pass 1: large asymmetric background shapes ─────────────
   const n1 = Math.round((6 + density / 100 * 4) * densityMul);
   for (let i = 0; i < n1; i++) {
-    const size = (0.18 + rand() * 0.22) * width * scaleMul * 0.4;
-    const angle = (rand() - 0.5) * 130; // ±65°
-    const bias = rand() > 0.5 ? 1 : -1;
-    const x = cx + bias * (0.05 + rand() * 0.30) * width;
-    const y = (0.10 + rand() * 0.80) * height;
-    const shape = SHAPES[Math.floor(rand() * 3)] as 'triangle' | 'parallelogram' | 'wedge'; // no slash in pass 1
-    const fill = darkColours[Math.floor(rand() * darkColours.length)];
+    const size  = (0.18 + rand() * 0.22) * width * scaleMul * 0.4;
+    const angle = (rand() - 0.5) * maxAngle;
+    const bias  = rand() > (1 - biasChance) ? 1 : -1;
+    const x     = cx + bias * (0.05 + rand() * 0.30) * width;
+    const y     = (0.10 + rand() * 0.80) * height;
+    const pool  = mainShapes.length > 0 ? mainShapes : safeShapes;
+    const shape = pool[Math.floor(rand() * pool.length)];
+    const fill  = pickColor('large');
     shapes.push({ pts: makePolygon(x, y, shape, size, angle), fill });
   }
 
   if (passes < 2) return shapes;
 
-  // ── Pass 2: diagonal slash bars ───────────────────────────
+  // ── Pass 2: diagonal slash bars (only when slash is active) ─
   const n2 = Math.round((4 + rand() * 3) * densityMul);
   for (let i = 0; i < n2; i++) {
-    const size = (0.15 + rand() * 0.20) * width * scaleMul * 0.35;
-    // angle constrained to ±25°–55°
-    const sign = rand() > 0.5 ? 1 : -1;
-    const angle = sign * (25 + rand() * 30);
-    const x = rand() * width;
-    const y = height * (0.2 + rand() * 0.6); // concentrated in vertical centre
-    const fill = palette[Math.floor(rand() * Math.min(2, palette.length))];
-    shapes.push({ pts: makePolygon(x, y, 'slash', size, angle), fill });
+    const size  = (0.15 + rand() * 0.20) * width * scaleMul * 0.35;
+    const sign  = rand() > 0.5 ? 1 : -1;
+    const base  = Math.max(5, maxAngle * 0.192);
+    const range = Math.max(5, maxAngle * 0.231);
+    const angle = sign * (base + rand() * range);
+    const x     = rand() * width;
+    const y     = height * (0.2 + rand() * 0.6);
+    const fill  = pickColor('slash');
+    if (hasSlash) {
+      shapes.push({ pts: makePolygon(x, y, 'slash', size, angle), fill });
+    }
+    // still consume rand() calls even when slash disabled to keep PRNG in sync
   }
 
   if (passes < 3) return shapes;
@@ -371,12 +414,12 @@ export function generateDazzle({ width, height, palette, pixelScale, density, pa
   // ── Pass 3a: medium detail shapes ─────────────────────────
   const n3 = Math.round((10 + rand() * 8) * densityMul);
   for (let i = 0; i < n3; i++) {
-    const size = (0.04 + rand() * 0.10) * width * scaleMul * 0.4;
-    const angle = (rand() - 0.5) * 180;
-    const x = rand() * width;
-    const y = rand() * height;
-    const shape = SHAPES[Math.floor(rand() * SHAPES.length)];
-    const fill = palette[Math.floor(rand() * palette.length)];
+    const size  = (0.04 + rand() * 0.10) * width * scaleMul * 0.4;
+    const angle = (rand() - 0.5) * maxAngle;
+    const x     = rand() * width;
+    const y     = rand() * height;
+    const shape = safeShapes[Math.floor(rand() * safeShapes.length)];
+    const fill  = pickColor('detail');
     shapes.push({ pts: makePolygon(x, y, shape, size, angle), fill });
   }
 
@@ -384,15 +427,14 @@ export function generateDazzle({ width, height, palette, pixelScale, density, pa
   const ns = Math.max(1, Math.round(3 * pixelScale * 0.5));
   const noiseCount = Math.round((width * height * 0.012 * density) / (ns * ns));
   const lum = palette.map(hexLum);
-  const darkest = palette[lum.indexOf(Math.min(...lum))];
+  const darkest  = palette[lum.indexOf(Math.min(...lum))];
   const lightest = palette[lum.indexOf(Math.max(...lum))];
   for (let i = 0; i < noiseCount; i++) {
     const nx = Math.floor(rand() * (width / ns)) * ns;
     const ny = Math.floor(rand() * (height / ns)) * ns;
-    const fill = i % 2 === 0 ? darkest : lightest;
     shapes.push({
       pts: [[nx, ny], [nx + ns, ny], [nx + ns, ny + ns], [nx, ny + ns]],
-      fill,
+      fill: i % 2 === 0 ? darkest : lightest,
     });
   }
 
