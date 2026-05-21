@@ -14,6 +14,10 @@ from pathlib import Path
 
 import webview
 
+# Suppress PyWebView's auto-inserted Edit and View menus so our own
+# File / Edit / View / Pattern appear in the correct order.
+webview.settings['SHOW_DEFAULT_MENUS'] = False
+
 from api import PixelcamoApi
 from menu import build_menu  # returns list[webview.Menu] for webview.start(menu=...)
 
