@@ -447,7 +447,14 @@ export default function App({ isDevWrapper }: AppProps) {
   const handleSave = useCallback(async () => {
     const doc = buildDoc();
     if (docPath) doc._path = docPath;
-    const path = await getApi().save_document(doc);
+    let path = '';
+    try {
+      path = await getApi().save_document(doc) as string;
+    } catch {
+      setStatus('Error saving document');
+      setTimeout(() => setStatus('Idle'), 3000);
+      return;
+    }
     if (!path) return;
     setDocPath(path);
     setDirty(false);
@@ -456,7 +463,14 @@ export default function App({ isDevWrapper }: AppProps) {
   }, [buildDoc, docPath]);
 
   const handleSaveAs = useCallback(async () => {
-    const path = await getApi().save_document(buildDoc());
+    let path = '';
+    try {
+      path = await getApi().save_document(buildDoc()) as string;
+    } catch {
+      setStatus('Error saving document');
+      setTimeout(() => setStatus('Idle'), 3000);
+      return;
+    }
     if (!path) return;
     setDocPath(path);
     setDirty(false);

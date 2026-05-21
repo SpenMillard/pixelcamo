@@ -48,6 +48,16 @@ def _push_mru(path: str) -> None:
     _save_mru(paths[:_MAX_MRU])
 
 
+def _save_dialog_path(result) -> str:
+    """
+    PyWebView's create_file_dialog returns a plain str for SAVE dialogs and a
+    tuple for OPEN dialogs.  Normalise both to a single path string or ''.
+    """
+    if not result:
+        return ''
+    return result if isinstance(result, str) else result[0]
+
+
 class PixelcamoApi:
     """Callable from window.pywebview.api.* in the frontend."""
 
@@ -55,7 +65,7 @@ class PixelcamoApi:
         """Open a file dialog and return the parsed .pcm document, or None."""
         window = webview.windows[0]
         paths = window.create_file_dialog(
-            webview.OPEN_DIALOG,
+            webview.FileDialog.OPEN,
             allow_multiple=False,
             file_types=('Pixelcamo Pattern (*.pcm)',),
         )
@@ -83,11 +93,11 @@ class PixelcamoApi:
             save_path = existing_path
         else:
             result = window.create_file_dialog(
-                webview.SAVE_DIALOG,
+                webview.FileDialog.SAVE,
                 save_filename='Untitled.pcm',
                 file_types=('Pixelcamo Pattern (*.pcm)',),
             )
-            save_path = result[0] if result else ''
+            save_path = _save_dialog_path(result)
 
         if not save_path:
             return ''
@@ -135,14 +145,14 @@ class PixelcamoApi:
             base_name = f'{base_name}_tile'
 
         result = window.create_file_dialog(
-            webview.SAVE_DIALOG,
+            webview.FileDialog.SAVE,
             save_filename=f'{base_name}{ext}',
             file_types=(
                 ('PDF Document (*.pdf)',) if fmt == 'PDF'
                 else ('PNG Image (*.png)',)
             ),
         )
-        save_path = result[0] if result else ''
+        save_path = _save_dialog_path(result)
         if not save_path:
             return ''
 
@@ -175,11 +185,11 @@ class PixelcamoApi:
         """Save a palette to a .json file. Returns saved path or ''."""
         window = webview.windows[0]
         result = window.create_file_dialog(
-            webview.SAVE_DIALOG,
+            webview.FileDialog.SAVE,
             save_filename='palette.json',
             file_types=('Palette (*.json)',),
         )
-        save_path = result[0] if result else ''
+        save_path = _save_dialog_path(result)
         if not save_path:
             return ''
         if not save_path.endswith('.json'):
@@ -194,7 +204,7 @@ class PixelcamoApi:
         """Open a palette .json file and return a color array, or None."""
         window = webview.windows[0]
         paths = window.create_file_dialog(
-            webview.OPEN_DIALOG,
+            webview.FileDialog.OPEN,
             allow_multiple=False,
             file_types=('Palette (*.json)',),
         )
