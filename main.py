@@ -15,7 +15,7 @@ from pathlib import Path
 import webview
 
 from api import PixelcamoApi
-from menu import build_menu
+from menu import build_menu  # returns list[webview.Menu] for webview.start(menu=...)
 
 
 def _set_app_icon() -> None:
@@ -65,7 +65,7 @@ def main() -> None:
     window.events.loaded += _on_loaded
 
     webview.start(
-        func=lambda: build_menu(window),
+        menu=build_menu(window),
         debug='--debug' in sys.argv,
     )
 
